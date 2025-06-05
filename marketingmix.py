@@ -1664,8 +1664,7 @@ class MMM_App:
                         # Проверка входных данных
                         if not selected_media:
                             st.error("Выберите хотя бы один медиа-канал")
-                            return
-                        
+                                                    
                         # Создание и обучение модели
                         model = MarketingMixModel(
                             adstock_params=adstock_params,
