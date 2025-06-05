@@ -1918,15 +1918,12 @@ class MMM_App:
                 st.error(f"Ошибка при расчете декомпозиции: {str(e)}")
                 st.info("💡 **Решение**: Попробуйте переобучить модель с другими параметрами в разделе 'Модель'")
 
-        with tab3:  # ROAS анализ
-        
-        with tab3:  # ROAS анализ
-
-             st.subheader("ROAS по каналам")
+        with tab3:  # ROAS анализ            
+            st.subheader("ROAS по каналам")
 
             # Краткое объяснение метрики
             # Добавляем объяснение ROAS
-               with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
+            with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
                 st.markdown("""
                 ### Return on Advertising Spend (ROAS) — Научное определение
 
