@@ -2277,9 +2277,18 @@ class MMM_App:
                     
                     with col2:
                         st.subheader("Сравнение распределений")
-                        
+
+                        # Определяем текущее распределение по каналам
+                        current_allocation = {
+                            ch: st.session_state.data[ch].mean()
+                            for ch in st.session_state.selected_media
+                        }
+
                         # Сравнительная диаграмма
-                        fig = self.visualizer.create_optimization_results(current_spend, optimal_allocation['allocation'])
+                        fig = self.visualizer.create_optimization_results(
+                            current_allocation,
+                            optimal_allocation['allocation']
+                        )
                         st.plotly_chart(fig, use_container_width=True)
 
     def show_scenarios(self):
