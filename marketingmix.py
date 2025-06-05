@@ -1421,13 +1421,13 @@ class MMM_App:
                 st.info("Загрузите данные для валидации")
 
     def show_model(self):
-    st.header("⚙️ Конфигурация модели")
+       st.header("⚙️ Конфигурация модели")
     
-    if st.session_state.data is None:
+       if st.session_state.data is None:
         st.warning("Сначала загрузите данные")
         return
     
-    data = st.session_state.data
+       data = st.session_state.data
     
     # Добавляем общее объяснение MMM
     with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
