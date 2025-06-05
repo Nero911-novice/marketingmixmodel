@@ -1681,8 +1681,7 @@ class MMM_App:
                         # Проверка на минимальное количество данных
                         if len(X) < 20:
                             st.error("Недостаточно данных для обучения модели (минимум 20 наблюдений)")
-                            return
-                        
+                                                    
                         # Обучение
                         train_size = max(10, int(len(X) * train_ratio))  # Минимум 10 наблюдений для обучения
                         X_train, X_test = X[:train_size], X[train_size:]
@@ -1739,8 +1738,7 @@ class MMM_App:
         
         if not st.session_state.model_fitted:
             st.warning("Сначала обучите модель")
-            return
-        
+                    
         # Проверка наличия необходимых данных
         required_session_vars = ['model', 'X_train', 'X_test', 'y_train', 'y_test', 'selected_media']
         missing_vars = [var for var in required_session_vars if var not in st.session_state or st.session_state[var] is None]
