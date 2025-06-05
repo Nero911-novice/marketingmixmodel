@@ -1468,7 +1468,7 @@ class MMM_App:
 
         with tab1:
             # Добавляем объяснение переменных модели
-            with st.expander("📖 Типология переменных в MMM", expanded=True):
+            with st.expander("📖 Типология переменных в MMM", expanded=False):
                 st.markdown("""
             ### Классификация переменных в Marketing Mix Model
             
@@ -1521,7 +1521,7 @@ class MMM_App:
     
         with tab2:
             # Добавляем объяснение параметров трансформации
-            with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
+            with st.expander("🔬 Научные основы медиа-трансформаций", expanded=False):
                 st.markdown("""
             ### Adstock трансформация (Эффект переноса)
             
@@ -1594,7 +1594,7 @@ class MMM_App:
     
         with tab3:
             # Добавляем объяснение обучения модели
-            with st.expander("📊 Методология обучения и валидации модели", expanded=True):
+            with st.expander("📊 Методология обучения и валидации модели", expanded=False):
                 st.markdown("""
             ### Стратегии машинного обучения в MMM
             
@@ -1923,7 +1923,7 @@ class MMM_App:
 
             # Краткое объяснение метрики
             # Добавляем объяснение ROAS
-            with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
+            with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=False):
                 st.markdown("""
                 ### Return on Advertising Spend (ROAS) — Научное определение
 
@@ -2033,7 +2033,7 @@ class MMM_App:
             st.subheader("Кривые насыщения")
             
             # Объяснение кривых насыщения
-            with st.expander("❓ Что такое кривые насыщения?", expanded=True):
+            with st.expander("❓ Что такое кривые насыщения?", expanded=False):
                 st.markdown("""
                 **Кривые насыщения** показывают, как эффективность рекламного канала меняется при увеличении бюджета.
 
@@ -2153,7 +2153,7 @@ class MMM_App:
         st.header("💰 Оптимизация бюджета")
         
         # Главное объяснение раздела
-        with st.expander("❓ Что такое оптимизация бюджета?", expanded=True):
+        with st.expander("❓ Что такое оптимизация бюджета?", expanded=False):
             st.markdown("""
             **Оптимизация бюджета** - это автоматический поиск наилучшего способа распределить ваши рекламные деньги.
             
@@ -2348,7 +2348,7 @@ class MMM_App:
         st.header("🔮 Сценарный анализ")
 
         # Добавляем общее объяснение сценарного анализа
-        with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
+        with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=False):
             st.markdown("""
         ### Сценарное планирование в Marketing Mix Modeling
         
@@ -2577,7 +2577,7 @@ class MMM_App:
     
         with tab2:
             # Добавляем объяснение сравнения сценариев
-            with st.expander("📈 Методология сравнения сценариев", expanded=True):
+            with st.expander("📈 Методология сравнения сценариев", expanded=False):
                 st.markdown("""
             ### Принципы сравнительного анализа стратегий
 
