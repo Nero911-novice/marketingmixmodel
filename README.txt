@@ -1,9 +1,9 @@
 # 🎯 Marketing Mix Model (MMM)
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue?style=for-the-badge&logo=python)](https://python.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28%2B-red?style=for-the-badge&logo=streamlit)](https://streamlit.io)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Production-orange?style=for-the-badge)](https://github.com)
+![Python](https://img.shields.io/badge/Python-3.8+-blue?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red?logo=streamlit&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Production-orange)
 
 > **Система эконометрического анализа и оптимизации маркетинговых инвестиций**
 
@@ -214,5 +214,39 @@ Saturation = Media^α / (Media^α + γ^α)
 - Убедитесь в корректности формата CSV
 - Проверьте наличие столбца 'date'
 - Удалите специальные символы из названий столбцов
+
+## 📞 Поддержка и контакты
+
+### Техническая поддержка
+- **Issues**: Создавайте issue в репозитории
+- **Документация**: Встроенные подсказки в интерфейсе
+- **Email**: [your-email@domain.com]
+
+### Развитие проекта
+- **Feature requests**: Предложения новой функциональности
+- **Bug reports**: Сообщения об ошибках
+- **Contributions**: Pull requests приветствуются
+
+## 📚 Дополнительные ресурсы
+
+### Научная литература
+- [Econometric Analysis of Marketing Mix](https://example.com)
+- [Media Mix Modeling Best Practices](https://example.com)
+- [Causal Inference in Marketing](https://example.com)
+
+### Полезные ссылки
+- [Streamlit Documentation](https://docs.streamlit.io)
+- [Scikit-learn User Guide](https://scikit-learn.org/stable/user_guide.html)
+- [Marketing Mix Modeling Guide](https://example.com)
+
+---
+
+<div align="center">
+
+**[📚 Документация](#) • [🐛 Issues](#) • [💬 Discussions](#)**
+
+*Разработано для научно обоснованного управления маркетинговыми инвестициями*
+
+**© 2024 Marketing Mix Model • MIT License**
 
 </div>
