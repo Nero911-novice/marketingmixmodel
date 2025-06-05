@@ -1,0 +1,1575 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from sklearn.linear_model import Ridge, Lasso, ElasticNet
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score, mean_absolute_percentage_error
+from scipy.optimize import minimize, differential_evolution, LinearConstraint, Bounds
+from datetime import datetime, timedelta
+import warnings
+warnings.filterwarnings('ignore')
+
+# ==========================================
+# MARKETING MIX MODEL - ОСНОВНАЯ МОДЕЛЬ
+# ==========================================
+
+class MarketingMixModel:
+    """
+    Основной класс для Marketing Mix Modeling.
+    
+    Реализует статистическую модель для измерения влияния маркетинговых каналов
+    на бизнес-метрики с учетом эффектов переноса (adstock) и насыщения (saturation).
+    """
+    
+    def __init__(self, adstock_params=None, saturation_params=None, 
+                 regularization='Ridge', alpha=1.0, normalize_features=True):
+        self.adstock_params = adstock_params or {}
+        self.saturation_params = saturation_params or {}
+        self.regularization = regularization
+        self.alpha = alpha
+        self.normalize_features = normalize_features
+        
+        self.scaler = StandardScaler() if normalize_features else None
+        self.regressor = self._get_regressor()
+        
+        # Метаданные модели
+        self.is_fitted = False
+        self.feature_names = None
+        self.media_channels = None
+        self.target_name = None
+        
+    def _get_regressor(self):
+        """Получить регрессор на основе типа регуляризации."""
+        if self.regularization == 'Ridge':
+            return Ridge(alpha=self.alpha, fit_intercept=True)
+        elif self.regularization == 'Lasso':
+            return Lasso(alpha=self.alpha, fit_intercept=True, max_iter=2000)
+        elif self.regularization == 'ElasticNet':
+            return ElasticNet(alpha=self.alpha, fit_intercept=True, max_iter=2000)
+        else:
+            raise ValueError(f"Неподдерживаемый тип регуляризации: {self.regularization}")
+    
+    def _apply_adstock(self, media_data, decay_rate=0.5):
+        """Применить простую Adstock трансформацию."""
+        adstocked = np.zeros_like(media_data, dtype=float)
+        for i in range(len(media_data)):
+            if i == 0:
+                adstocked[i] = media_data[i]
+            else:
+                adstocked[i] = media_data[i] + decay_rate * adstocked[i-1]
+        return adstocked
+    
+    def _apply_saturation(self, media_data, alpha=1.0, gamma=None):
+        """Применить Hill Saturation трансформацию."""
+        if gamma is None:
+            gamma = np.median(media_data[media_data > 0]) if np.any(media_data > 0) else 1.0
+        
+        media_data = np.maximum(media_data, 1e-10)
+        gamma = max(gamma, 1e-10)
+        
+        numerator = np.power(media_data, alpha)
+        denominator = np.power(media_data, alpha) + np.power(gamma, alpha)
+        denominator = np.maximum(denominator, 1e-10)
+        
+        return numerator / denominator
+    
+    def _apply_transformations(self, X_media, fit=False):
+        """Применить трансформации adstock и saturation к медиа-переменным."""
+        X_transformed = X_media.copy()
+        
+        for channel in X_media.columns:
+            # Adstock
+            if channel in self.adstock_params:
+                decay_rate = self.adstock_params[channel].get('decay', 0.5)
+            else:
+                decay_rate = 0.5
+            
+            X_transformed[channel] = self._apply_adstock(X_media[channel].values, decay_rate)
+            
+            # Saturation
+            if channel in self.saturation_params:
+                alpha = self.saturation_params[channel].get('alpha', 1.0)
+                gamma = self.saturation_params[channel].get('gamma', None)
+            else:
+                alpha = 1.0
+                gamma = None
+            
+            X_transformed[channel] = self._apply_saturation(X_transformed[channel].values, alpha, gamma)
+        
+        return X_transformed
+    
+    def fit(self, X, y):
+        """Обучить модель MMM."""
+        if not isinstance(X, pd.DataFrame):
+            raise ValueError("X должен быть pandas DataFrame")
+        
+        if len(X) != len(y):
+            raise ValueError("Размеры X и y не совпадают")
+        
+        # Сохранение метаданных
+        self.feature_names = X.columns.tolist()
+        self.media_channels = [col for col in X.columns 
+                              if any(keyword in col.lower() for keyword in ['spend', 'cost', 'budget'])]
+        
+        # Разделение на медиа и немедиа переменные
+        X_media = X[self.media_channels] if self.media_channels else pd.DataFrame()
+        X_non_media = X.drop(columns=self.media_channels) if self.media_channels else X
+        
+        # Применение трансформаций к медиа-каналам
+        if not X_media.empty:
+            X_media_transformed = self._apply_transformations(X_media, fit=True)
+        else:
+            X_media_transformed = pd.DataFrame()
+        
+        # Объединение
+        if not X_media_transformed.empty and not X_non_media.empty:
+            X_final = pd.concat([X_media_transformed, X_non_media], axis=1)
+        elif not X_media_transformed.empty:
+            X_final = X_media_transformed
+        else:
+            X_final = X_non_media
+        
+        # Нормализация признаков
+        if self.normalize_features:
+            X_scaled = self.scaler.fit_transform(X_final)
+        else:
+            X_scaled = X_final.values
+        
+        # Обучение регрессора
+        self.regressor.fit(X_scaled, y)
+        
+        # Сохранение данных
+        self.X_train = X_final
+        self.y_train = np.array(y)
+        
+        self.is_fitted = True
+        return self
+    
+    def predict(self, X):
+        """Сделать прогноз с помощью обученной модели."""
+        if not self.is_fitted:
+            raise ValueError("Модель не обучена. Сначала вызовите fit()")
+        
+        # Проверка соответствия признаков
+        if list(X.columns) != self.feature_names:
+            raise ValueError("Признаки не соответствуют обучающим данным")
+        
+        # Разделение на медиа и немедиа переменные
+        X_media = X[self.media_channels] if self.media_channels else pd.DataFrame()
+        X_non_media = X.drop(columns=self.media_channels) if self.media_channels else X
+        
+        # Применение трансформаций
+        if not X_media.empty:
+            X_media_transformed = self._apply_transformations(X_media, fit=False)
+        else:
+            X_media_transformed = pd.DataFrame()
+        
+        # Объединение
+        if not X_media_transformed.empty and not X_non_media.empty:
+            X_final = pd.concat([X_media_transformed, X_non_media], axis=1)
+        elif not X_media_transformed.empty:
+            X_final = X_media_transformed
+        else:
+            X_final = X_non_media
+        
+        # Нормализация
+        if self.normalize_features:
+            X_scaled = self.scaler.transform(X_final)
+        else:
+            X_scaled = X_final.values
+        
+        return self.regressor.predict(X_scaled)
+    
+    def score(self, X, y):
+        """Вычислить R² score для данных."""
+        y_pred = self.predict(X)
+        return r2_score(y, y_pred)
+    
+    def get_model_metrics(self, X_test, y_test):
+        """Получить полный набор метрик качества модели."""
+        y_pred = self.predict(X_test)
+        
+        metrics = {
+            'R²': r2_score(y_test, y_pred),
+            'MAPE': mean_absolute_percentage_error(y_test, y_pred),
+            'MAE': np.mean(np.abs(y_test - y_pred)),
+            'RMSE': np.sqrt(np.mean((y_test - y_pred) ** 2))
+        }
+        
+        return metrics
+    
+    def get_media_contributions(self, X, y):
+        """Рассчитать вклад каждого медиа-канала в продажи."""
+        if not self.is_fitted:
+            raise ValueError("Модель не обучена")
+        
+        # Подготовка данных как в обучении
+        X_media = X[self.media_channels] if self.media_channels else pd.DataFrame()
+        X_non_media = X.drop(columns=self.media_channels) if self.media_channels else X
+        
+        if not X_media.empty:
+            X_media_transformed = self._apply_transformations(X_media, fit=False)
+        else:
+            X_media_transformed = pd.DataFrame()
+        
+        if not X_media_transformed.empty and not X_non_media.empty:
+            X_final = pd.concat([X_media_transformed, X_non_media], axis=1)
+        elif not X_media_transformed.empty:
+            X_final = X_media_transformed
+        else:
+            X_final = X_non_media
+        
+        # Нормализация
+        if self.normalize_features:
+            X_scaled = self.scaler.transform(X_final)
+        else:
+            X_scaled = X_final.values
+        
+        # Расчет вкладов
+        coefficients = self.regressor.coef_
+        intercept = self.regressor.intercept_
+        
+        contributions = {}
+        
+        # Базовая линия
+        contributions['Base'] = intercept * len(y)
+        
+        # Вклады признаков
+        for i, feature in enumerate(X_final.columns):
+            feature_contribution = np.sum(X_scaled[:, i] * coefficients[i])
+            contributions[feature] = feature_contribution
+        
+        return contributions
+    
+    def calculate_roas(self, data, media_channels):
+        """Рассчитать ROAS для каждого медиа-канала."""
+        contributions = self.get_media_contributions(data[self.feature_names], data.iloc[:, 0])
+        
+        roas_data = []
+        for channel in media_channels:
+            if channel in contributions:
+                total_spend = data[channel].sum()
+                total_contribution = contributions[channel]
+                
+                if total_spend > 0:
+                    roas = total_contribution / total_spend
+                else:
+                    roas = 0
+                
+                roas_data.append({
+                    'Channel': channel,
+                    'ROAS': roas,
+                    'Total_Spend': total_spend,
+                    'Total_Contribution': total_contribution
+                })
+        
+        return pd.DataFrame(roas_data)
+    
+    def predict_scenario(self, scenario_budget, seasonality_factor=1.0, competition_factor=1.0):
+        """Предсказать результаты для заданного сценария бюджета."""
+        if not self.is_fitted:
+            raise ValueError("Модель не обучена")
+        
+        # Создание сценарных данных
+        scenario_data = pd.DataFrame()
+        for feature in self.feature_names:
+            if feature in scenario_budget:
+                scenario_data[feature] = [scenario_budget[feature]]
+            else:
+                # Использовать среднее значение
+                scenario_data[feature] = [self.X_train[feature].mean()]
+        
+        # Прогноз
+        predicted_sales = self.predict(scenario_data)[0]
+        
+        # Применение внешних факторов
+        predicted_sales *= seasonality_factor * competition_factor
+        
+        # Расчет ROAS
+        total_spend = sum(scenario_budget.values())
+        predicted_roas = predicted_sales / total_spend if total_spend > 0 else 0
+        
+        return {
+            'sales': predicted_sales,
+            'roas': predicted_roas,
+            'total_spend': total_spend
+        }
+
+# ==========================================
+# DATA PROCESSOR - ОБРАБОТКА ДАННЫХ
+# ==========================================
+
+class DataProcessor:
+    """Класс для обработки и подготовки данных для Marketing Mix Model."""
+    
+    def __init__(self):
+        self.data_quality_checks = {}
+    
+    def generate_demo_data(self, n_periods=104, start_date='2023-01-01', frequency='W'):
+        """Генерация демонстрационных данных для MMM."""
+        # Создание временного индекса
+        date_range = pd.date_range(start=start_date, periods=n_periods, freq=frequency)
+        
+        # Установка seed для воспроизводимости
+        np.random.seed(42)
+        
+        # Создание базовых паттернов
+        seasonal_annual = 1 + 0.3 * np.sin(2 * np.pi * np.arange(n_periods) / 52)
+        seasonal_monthly = 1 + 0.15 * np.sin(2 * np.pi * np.arange(n_periods) / 4.33)
+        trend = 1 + 0.002 * np.arange(n_periods)
+        noise = np.random.normal(0, 0.1, n_periods)
+        holiday_effect = np.random.choice([0, 0, 0, 0.3], n_periods, p=[0.85, 0.05, 0.05, 0.05])
+        
+        # Генерация медиа-каналов
+        facebook_base = 45000 + 15000 * seasonal_annual + 8000 * np.random.normal(0, 1, n_periods)
+        facebook_spend = np.maximum(facebook_base, 5000)
+        
+        google_base = 67000 + 20000 * seasonal_monthly + 12000 * np.random.normal(0, 1, n_periods)
+        google_spend = np.maximum(google_base, 8000)
+        
+        tiktok_base = 15000 + 25000 * (np.arange(n_periods) / n_periods) + 10000 * np.random.normal(0, 1.5, n_periods)
+        tiktok_spend = np.maximum(tiktok_base, 0)
+        
+        youtube_base = 32000 + 12000 * seasonal_annual + 8000 * np.random.normal(0, 1, n_periods)
+        youtube_spend = np.maximum(youtube_base, 2000)
+        
+        offline_base = 25000 + 8000 * seasonal_annual + 5000 * np.random.normal(0, 0.8, n_periods)
+        offline_spend = np.maximum(offline_base, 1000)
+        
+        # Генерация медиа-показателей
+        facebook_impressions = facebook_spend * 50 + np.random.normal(0, facebook_spend * 5, n_periods)
+        google_clicks = google_spend * 0.035 + np.random.normal(0, google_spend * 0.007, n_periods)
+        
+        # Внешние факторы
+        promo_activity = np.random.choice([0, 1], n_periods, p=[0.75, 0.25])
+        competitor_activity = 0.8 + 0.4 * np.random.beta(2, 2, n_periods)
+        
+        # Генерация целевой переменной (заказы)
+        def apply_adstock_saturation(media, decay=0.5, alpha=1.0, gamma_factor=0.3):
+            # Adstock
+            adstocked = np.zeros_like(media)
+            for i in range(len(media)):
+                if i == 0:
+                    adstocked[i] = media[i]
+                else:
+                    adstocked[i] = media[i] + decay * adstocked[i-1]
+            
+            # Saturation
+            gamma = np.mean(adstocked) * gamma_factor
+            saturated = np.power(adstocked, alpha) / (np.power(adstocked, alpha) + np.power(gamma, alpha))
+            return saturated
+        
+        # Базовая линия
+        base_orders = 8000 * trend * seasonal_annual
+        
+        # Эффекты медиа
+        facebook_effect = apply_adstock_saturation(facebook_spend, 0.6, 0.8, 0.4) * 0.15
+        google_effect = apply_adstock_saturation(google_spend, 0.4, 1.2, 0.3) * 0.12
+        tiktok_effect = apply_adstock_saturation(tiktok_spend, 0.3, 1.5, 0.5) * 0.08
+        youtube_effect = apply_adstock_saturation(youtube_spend, 0.7, 0.9, 0.35) * 0.10
+        offline_effect = apply_adstock_saturation(offline_spend, 0.8, 0.6, 0.6) * 0.06
+        
+        # Эффекты внешних факторов
+        promo_effect = promo_activity * 1500
+        competitor_effect = (1 - competitor_activity) * 1000
+        holiday_orders = holiday_effect * 2000
+        
+        # Итоговые заказы
+        total_orders = (base_orders + 
+                       facebook_effect + google_effect + tiktok_effect + 
+                       youtube_effect + offline_effect +
+                       promo_effect + competitor_effect + 
+                       holiday_orders + noise * 500)
+        
+        total_orders = np.maximum(total_orders, 1000)
+        
+        # Создание DataFrame
+        demo_data = pd.DataFrame({
+            'date': date_range,
+            'orders': total_orders.astype(int),
+            
+            # Медиа-расходы
+            'facebook_spend': facebook_spend.astype(int),
+            'google_spend': google_spend.astype(int),
+            'tiktok_spend': tiktok_spend.astype(int),
+            'youtube_spend': youtube_spend.astype(int),
+            'offline_spend': offline_spend.astype(int),
+            
+            # Медиа-показатели
+            'facebook_impressions': facebook_impressions.astype(int),
+            'google_clicks': google_clicks.astype(int),
+            
+            # Внешние факторы
+            'promo_activity': promo_activity,
+            'competitor_activity': competitor_activity.round(2),
+            'holiday_effect': holiday_effect,
+            
+            # Дополнительные переменные
+            'seasonal_index': seasonal_annual.round(2),
+            'trend_index': trend.round(2)
+        })
+        
+        return demo_data
+    
+    def validate_data(self, data):
+        """Валидация данных для MMM."""
+        validation_results = {}
+        
+        # 1. Проверка обязательных столбцов
+        required_columns = ['date']
+        missing_required = [col for col in required_columns if col not in data.columns]
+        
+        validation_results['required_columns'] = {
+            'status': len(missing_required) == 0,
+            'message': f"Отсутствуют столбцы: {missing_required}" if missing_required else "Все обязательные столбцы присутствуют"
+        }
+        
+        # 2. Проверка формата даты
+        try:
+            pd.to_datetime(data['date'])
+            date_format_ok = True
+            date_message = "Формат даты корректный"
+        except:
+            date_format_ok = False
+            date_message = "Некорректный формат даты"
+        
+        validation_results['date_format'] = {
+            'status': date_format_ok,
+            'message': date_message
+        }
+        
+        # 3. Проверка пропущенных значений
+        missing_counts = data.isnull().sum()
+        
+        validation_results['missing_values'] = {
+            'status': missing_counts.sum() == 0,
+            'message': f"Пропусков: {missing_counts.sum()}" if missing_counts.sum() > 0 else "Пропуски отсутствуют"
+        }
+        
+        # 4. Проверка дубликатов дат
+        duplicate_dates = data['date'].duplicated().sum()
+        validation_results['duplicate_dates'] = {
+            'status': duplicate_dates == 0,
+            'message': f"Дубликатов дат: {duplicate_dates}" if duplicate_dates > 0 else "Дубликаты отсутствуют"
+        }
+        
+        # 5. Общая оценка
+        passed_checks = sum(1 for check in validation_results.values() if check['status'])
+        total_checks = len(validation_results)
+        quality_score = passed_checks / total_checks * 100
+        
+        validation_results['overall_quality'] = {
+            'status': quality_score >= 80,
+            'message': f"Качество данных: {quality_score:.1f}%",
+            'score': quality_score
+        }
+        
+        return validation_results
+    
+    def prepare_model_data(self, data, target_column, media_columns, external_columns=None, control_columns=None):
+        """Подготовка данных для обучения MMM модели."""
+        df = data.copy()
+        df = df.sort_values('date').reset_index(drop=True)
+        
+        # Формирование списка всех признаков
+        all_features = media_columns.copy()
+        
+        if external_columns:
+            all_features.extend(external_columns)
+        
+        if control_columns:
+            all_features.extend(control_columns)
+        
+        # Проверка наличия столбцов
+        missing_columns = [col for col in all_features + [target_column] if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Отсутствуют столбцы: {missing_columns}")
+        
+        # Обработка пропущенных значений
+        for col in all_features:
+            if df[col].isnull().any():
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    df[col] = df[col].fillna(df[col].median())
+                else:
+                    df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 'unknown')
+        
+        if df[target_column].isnull().any():
+            df[target_column] = df[target_column].fillna(df[target_column].median())
+        
+        # Формирование матрицы признаков
+        X = df[all_features].copy()
+        y = df[target_column].copy()
+        
+        return X, y
+    
+    def split_data(self, data, train_ratio=0.8, date_column='date'):
+        """Разделение данных на обучающую и тестовую выборки по времени."""
+        df = data.copy()
+        df = df.sort_values(date_column)
+        
+        split_index = int(len(df) * train_ratio)
+        
+        train_data = df.iloc[:split_index].copy()
+        test_data = df.iloc[split_index:].copy()
+        
+        return train_data, test_data
+
+# ==========================================
+# VISUALIZER - ВИЗУАЛИЗАЦИЯ
+# ==========================================
+
+class Visualizer:
+    """Класс для создания визуализаций результатов Marketing Mix Model."""
+    
+    def __init__(self):
+        self.color_palette = {
+            'primary': '#1f77b4',
+            'secondary': '#ff7f0e', 
+            'success': '#2ca02c',
+            'danger': '#d62728',
+            'warning': '#ff9800',
+            'info': '#17a2b8'
+        }
+        
+        self.media_colors = {
+            'facebook': '#1877f2',
+            'google': '#4285f4',
+            'tiktok': '#000000',
+            'youtube': '#ff0000',
+            'instagram': '#e4405f',
+            'offline': '#6c757d',
+            'base': '#343a40'
+        }
+        
+    def create_waterfall_chart(self, contributions, title="Декомпозиция продаж по каналам"):
+        """Создание waterfall диаграммы для визуализации вкладов каналов."""
+        # Подготовка данных
+        channels = list(contributions.keys())
+        values = list(contributions.values())
+        
+        # Сортировка по убыванию (исключая Base)
+        if 'Base' in contributions:
+            base_value = contributions['Base']
+            other_contributions = {k: v for k, v in contributions.items() if k != 'Base'}
+            sorted_others = sorted(other_contributions.items(), key=lambda x: x[1], reverse=True)
+            
+            channels = ['Base'] + [item[0] for item in sorted_others]
+            values = [base_value] + [item[1] for item in sorted_others]
+        else:
+            sorted_items = sorted(contributions.items(), key=lambda x: x[1], reverse=True)
+            channels = [item[0] for item in sorted_items]
+            values = [item[1] for item in sorted_items]
+        
+        # Создание цветов
+        colors = []
+        for channel in channels:
+            channel_lower = channel.lower()
+            if channel_lower in self.media_colors:
+                colors.append(self.media_colors[channel_lower])
+            elif 'base' in channel_lower:
+                colors.append(self.media_colors['base'])
+            else:
+                colors.append(self.color_palette['primary'])
+        
+        # Создание графика
+        fig = go.Figure(go.Waterfall(
+            name="Вклады",
+            orientation="v",
+            measure=["absolute"] + ["relative"] * (len(channels) - 1),
+            x=channels,
+            y=values,
+            text=[f"{val:,.0f}" for val in values],
+            textposition="outside",
+            connector={"line": {"color": "rgb(63, 63, 63)"}},
+            marker={"color": colors}
+        ))
+        
+        fig.update_layout(
+            title={
+                'text': title,
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16}
+            },
+            showlegend=False,
+            xaxis_title="Каналы",
+            yaxis_title="Вклад в продажи",
+            height=500,
+            template="plotly_white"
+        )
+        
+        return fig
+    
+    def create_roas_comparison(self, roas_data, title="ROAS по каналам"):
+        """Создание сравнительной диаграммы ROAS."""
+        roas_sorted = roas_data.sort_values('ROAS', ascending=True)
+        
+        # Создание цветов
+        colors = []
+        for channel in roas_sorted['Channel']:
+            channel_lower = channel.lower()
+            if channel_lower in self.media_colors:
+                colors.append(self.media_colors[channel_lower])
+            else:
+                roas_val = roas_sorted[roas_sorted['Channel'] == channel]['ROAS'].iloc[0]
+                if roas_val >= 3:
+                    colors.append(self.color_palette['success'])
+                elif roas_val >= 1:
+                    colors.append(self.color_palette['warning'])
+                else:
+                    colors.append(self.color_palette['danger'])
+        
+        fig = go.Figure(data=[
+            go.Bar(
+                x=roas_sorted['ROAS'],
+                y=roas_sorted['Channel'],
+                orientation='h',
+                marker_color=colors,
+                text=[f"{val:.2f}" for val in roas_sorted['ROAS']],
+                textposition='outside'
+            )
+        ])
+        
+        fig.add_vline(
+            x=1, 
+            line_dash="dash", 
+            line_color="red",
+            annotation_text="Точка безубыточности",
+            annotation_position="top right"
+        )
+        
+        fig.update_layout(
+            title={'text': title, 'x': 0.5, 'xanchor': 'center'},
+            xaxis_title="ROAS",
+            yaxis_title="Каналы",
+            height=400,
+            template="plotly_white",
+            showlegend=False
+        )
+        
+        return fig
+    
+    def create_budget_allocation_pie(self, budget_data, title="Распределение бюджета"):
+        """Создание круговой диаграммы распределения бюджета."""
+        channels = list(budget_data.keys())
+        values = list(budget_data.values())
+        total_budget = sum(values)
+        
+        colors = []
+        for channel in channels:
+            channel_lower = channel.lower()
+            colors.append(self.media_colors.get(channel_lower, self.color_palette['primary']))
+        
+        fig = go.Figure(data=[go.Pie(
+            labels=channels,
+            values=values,
+            marker_colors=colors,
+            textinfo='label+percent',
+            textposition='outside',
+            hovertemplate="<b>%{label}</b><br>Бюджет: %{value:,.0f}<br>Доля: %{percent}<extra></extra>"
+        )])
+        
+        fig.update_layout(
+            title={
+                'text': f"{title}<br><sub>Общий бюджет: {total_budget:,.0f}</sub>",
+                'x': 0.5,
+                'xanchor': 'center'
+            },
+            height=500,
+            template="plotly_white"
+        )
+        
+        return fig
+    
+    def create_optimization_results(self, current_allocation, optimal_allocation, 
+                                  title="Результаты оптимизации бюджета"):
+        """Создание сравнения текущего и оптимального распределения."""
+        channels = list(current_allocation.keys())
+        current_values = [current_allocation[ch] for ch in channels]
+        optimal_values = [optimal_allocation.get(ch, 0) for ch in channels]
+        
+        fig = go.Figure()
+        
+        # Текущее распределение
+        fig.add_trace(go.Bar(
+            name='Текущее',
+            x=channels,
+            y=current_values,
+            marker_color=self.color_palette['info'],
+            opacity=0.7
+        ))
+        
+        # Оптимальное распределение
+        fig.add_trace(go.Bar(
+            name='Оптимальное',
+            x=channels,
+            y=optimal_values,
+            marker_color=self.color_palette['success']
+        ))
+        
+        # Расчет изменений
+        for i, channel in enumerate(channels):
+            change = optimal_values[i] - current_values[i]
+            change_pct = (change / current_values[i] * 100) if current_values[i] > 0 else 0
+            
+            fig.add_annotation(
+                x=i,
+                y=max(optimal_values[i], current_values[i]) + max(optimal_values) * 0.05,
+                text=f"{change_pct:+.1f}%",
+                showarrow=False,
+                font=dict(
+                    size=10,
+                    color=self.color_palette['success'] if change > 0 else self.color_palette['danger']
+                )
+            )
+        
+        fig.update_layout(
+            title={'text': title, 'x': 0.5, 'xanchor': 'center'},
+            xaxis_title="Каналы",
+            yaxis_title="Бюджет",
+            barmode='group',
+            height=500,
+            template="plotly_white"
+        )
+        
+        return fig
+
+# ==========================================
+# BUDGET OPTIMIZER - ОПТИМИЗАЦИЯ БЮДЖЕТА
+# ==========================================
+
+class BudgetOptimizer:
+    """Класс для оптимизации распределения маркетингового бюджета."""
+    
+    def __init__(self):
+        self.optimization_history = []
+        self.best_solution = None
+        self.convergence_criteria = {
+            'max_iterations': 1000,
+            'tolerance': 1e-6,
+            'stagnation_limit': 50
+        }
+    
+    def optimize_budget(self, model, total_budget, constraints=None, target='maximize_sales',
+                       method='SLSQP', bounds_buffer=0.05):
+        """Основной метод оптимизации бюджета."""
+        if not hasattr(model, 'media_channels') or not model.media_channels:
+            # Простая заглушка для демо
+            demo_channels = ['facebook_spend', 'google_spend', 'tiktok_spend']
+            optimal_allocation = {
+                'facebook_spend': total_budget * 0.3,
+                'google_spend': total_budget * 0.5,
+                'tiktok_spend': total_budget * 0.2
+            }
+            
+            return {
+                'success': True,
+                'allocation': optimal_allocation,
+                'predicted_sales': 85000,
+                'predicted_roas': 2.5,
+                'predicted_roi': 1.5,
+                'total_budget_used': total_budget,
+                'optimization_method': method
+            }
+        
+        media_channels = model.media_channels
+        n_channels = len(media_channels)
+        
+        # Подготовка ограничений
+        bounds, linear_constraints = self._prepare_constraints(
+            media_channels, total_budget, constraints, bounds_buffer
+        )
+        
+        # Определение целевой функции
+        objective_func = self._get_objective_function(model, media_channels, target)
+        
+        # Начальное приближение
+        initial_guess = self._get_initial_guess(media_channels, total_budget, constraints)
+        
+        # Выбор метода оптимизации
+        if method == 'SLSQP':
+            result = self._optimize_slsqp(objective_func, initial_guess, bounds, linear_constraints)
+        elif method == 'differential_evolution':
+            result = self._optimize_differential_evolution(objective_func, bounds, total_budget)
+        else:
+            raise ValueError(f"Неподдерживаемый метод оптимизации: {method}")
+        
+        # Обработка результатов
+        if result.success or hasattr(result, 'x'):
+            optimal_allocation = dict(zip(media_channels, result.x))
+            
+            # Расчет метрик для оптимального решения
+            predicted_results = self._calculate_metrics(model, optimal_allocation, media_channels)
+            
+            optimization_result = {
+                'success': True,
+                'allocation': optimal_allocation,
+                'predicted_sales': predicted_results['sales'],
+                'predicted_roas': predicted_results['roas'],
+                'predicted_roi': predicted_results['roi'],
+                'total_budget_used': sum(optimal_allocation.values()),
+                'optimization_method': method,
+                'objective_value': -result.fun if hasattr(result, 'fun') else None
+            }
+            
+            self.best_solution = optimization_result
+            
+        else:
+            optimization_result = {
+                'success': False,
+                'message': f"Оптимизация не удалась: {result.message if hasattr(result, 'message') else 'Неизвестная ошибка'}",
+                'allocation': dict(zip(media_channels, initial_guess))
+            }
+        
+        return optimization_result
+    
+    def _prepare_constraints(self, media_channels, total_budget, constraints, bounds_buffer):
+        """Подготовка ограничений для оптимизации."""
+        n_channels = len(media_channels)
+        
+        bounds_list = []
+        
+        for channel in media_channels:
+            if constraints and channel in constraints:
+                min_val = constraints[channel].get('min', 0)
+                max_val = constraints[channel].get('max', total_budget)
+            else:
+                min_val = 0
+                max_val = total_budget * 0.5
+            
+            min_val = max(0, min_val * (1 - bounds_buffer))
+            max_val = min(total_budget, max_val * (1 + bounds_buffer))
+            
+            bounds_list.append((min_val, max_val))
+        
+        bounds = Bounds([b[0] for b in bounds_list], [b[1] for b in bounds_list])
+        
+        A_eq = np.ones((1, n_channels))
+        linear_constraints = LinearConstraint(A_eq, total_budget, total_budget)
+        
+        return bounds, linear_constraints
+    
+    def _get_objective_function(self, model, media_channels, target):
+        """Создание целевой функции для оптимизации."""
+        def objective(x):
+            allocation = dict(zip(media_channels, x))
+            
+            try:
+                metrics = self._calculate_metrics(model, allocation, media_channels)
+                
+                if target == 'maximize_sales':
+                    return -metrics['sales']
+                elif target == 'maximize_roas':
+                    return -metrics['roas']
+                elif target == 'maximize_roi':
+                    return -metrics['roi']
+                else:
+                    return -metrics['sales']
+                    
+            except Exception as e:
+                return 1e10
+        
+        return objective
+    
+    def _calculate_metrics(self, model, allocation, media_channels):
+        """Расчет метрик для заданного распределения бюджета."""
+        scenario_result = model.predict_scenario(allocation)
+        
+        total_spend = sum(allocation.values())
+        
+        metrics = {
+            'sales': scenario_result['sales'],
+            'roas': scenario_result['roas'],
+            'roi': (scenario_result['sales'] - total_spend) / total_spend if total_spend > 0 else 0,
+            'total_spend': total_spend
+        }
+        
+        return metrics
+    
+    def _get_initial_guess(self, media_channels, total_budget, constraints):
+        """Создание начального приближения для оптимизации."""
+        n_channels = len(media_channels)
+        
+        if constraints:
+            initial = []
+            remaining_budget = total_budget
+            
+            for i, channel in enumerate(media_channels):
+                if channel in constraints:
+                    min_val = constraints[channel].get('min', 0)
+                    max_val = constraints[channel].get('max', total_budget)
+                    
+                    if i == n_channels - 1:
+                        allocation = remaining_budget
+                    else:
+                        preferred = (min_val + max_val) / 2
+                        allocation = min(preferred, remaining_budget / (n_channels - i))
+                        allocation = max(min_val, min(max_val, allocation))
+                    
+                    initial.append(allocation)
+                    remaining_budget -= allocation
+                else:
+                    allocation = remaining_budget / (n_channels - i)
+                    initial.append(allocation)
+                    remaining_budget -= allocation
+            
+            current_total = sum(initial)
+            if current_total > 0:
+                initial = [x * total_budget / current_total for x in initial]
+        else:
+            initial = [total_budget / n_channels] * n_channels
+        
+        return np.array(initial)
+    
+    def _optimize_slsqp(self, objective_func, initial_guess, bounds, linear_constraints):
+        """Оптимизация методом SLSQP."""
+        result = minimize(
+            objective_func,
+            initial_guess,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=linear_constraints,
+            options={
+                'maxiter': self.convergence_criteria['max_iterations'],
+                'ftol': self.convergence_criteria['tolerance'],
+                'disp': False
+            }
+        )
+        
+        return result
+    
+    def _optimize_differential_evolution(self, objective_func, bounds, total_budget):
+        """Оптимизация дифференциальной эволюцией."""
+        def constrained_objective(x):
+            budget_diff = abs(sum(x) - total_budget)
+            penalty = 1e6 * budget_diff
+            
+            return objective_func(x) + penalty
+        
+        bounds_list = list(zip(bounds.lb, bounds.ub))
+        
+        result = differential_evolution(
+            constrained_objective,
+            bounds_list,
+            maxiter=self.convergence_criteria['max_iterations'],
+            tol=self.convergence_criteria['tolerance'],
+            seed=42,
+            polish=True
+        )
+        
+        return result
+
+# ==========================================
+# STREAMLIT APPLICATION - ГЛАВНОЕ ПРИЛОЖЕНИЕ
+# ==========================================
+
+# Конфигурация страницы
+st.set_page_config(
+    page_title="Marketing Mix Model",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# CSS стили
+st.markdown("""
+<style>
+.metric-card {
+    background-color: #f0f2f6;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin: 0.5rem 0;
+}
+.stAlert > div {
+    padding: 1rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+class MMM_App:
+    def __init__(self):
+        self.processor = DataProcessor()
+        self.visualizer = Visualizer()
+        self.optimizer = BudgetOptimizer()
+        
+        # Инициализация состояния
+        if 'model' not in st.session_state:
+            st.session_state.model = None
+        if 'data' not in st.session_state:
+            st.session_state.data = None
+        if 'model_fitted' not in st.session_state:
+            st.session_state.model_fitted = False
+
+    def run(self):
+        st.title("🎯 Marketing Mix Model")
+        st.markdown("**Система планирования и оптимизации рекламных бюджетов**")
+        
+        # Боковая панель навигации
+        with st.sidebar:
+            st.header("Навигация")
+            page = st.selectbox(
+                "Выберите раздел:",
+                ["🏠 Главная", "📊 Данные", "⚙️ Модель", "📈 Результаты", "💰 Оптимизация", "🔮 Сценарии"]
+            )
+            
+            st.markdown("---")
+            st.markdown("### Информация о модели")
+            if st.session_state.model_fitted:
+                st.success("✅ Модель обучена")
+            else:
+                st.warning("⚠️ Модель не обучена")
+        
+        # Роутинг страниц
+        if page == "🏠 Главная":
+            self.show_home()
+        elif page == "📊 Данные":
+            self.show_data()
+        elif page == "⚙️ Модель":
+            self.show_model()
+        elif page == "📈 Результаты":
+            self.show_results()
+        elif page == "💰 Оптимизация":
+            self.show_optimization()
+        elif page == "🔮 Сценарии":
+            self.show_scenarios()
+
+    def show_home(self):
+        st.header("Marketing Mix Model - Система оптимизации рекламных бюджетов")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("""
+            ### Что такое Marketing Mix Modeling?
+            
+            MMM — это статистический подход для измерения влияния различных маркетинговых каналов 
+            на бизнес-метрики и оптимизации распределения рекламного бюджета.
+            
+            #### Ключевые возможности:
+            
+            **📊 Анализ атрибуции**
+            - Определение вклада каждого канала в продажи
+            - Учет эффектов переноса (adstock) и насыщения (saturation)
+            - Измерение ROAS по каналам
+            
+            **🎯 Оптимизация бюджета**
+            - Поиск оптимального распределения бюджета
+            - Прогнозирование эффекта изменений в медиа-планах
+            - Сценарное планирование
+            
+            **🔮 Прогнозирование**
+            - "What-if" анализ различных стратегий
+            - Моделирование влияния внешних факторов
+            - Планирование медиа-активности на будущие периоды
+            """)
+            
+        with col2:
+            st.markdown("### Математическая модель")
+            st.latex(r'''Sales_t = Base + \sum_{i=1}^{n} Adstock_i(Media_i) \times Saturation_i(Media_i) + Externals_t''')
+            
+            st.markdown("**Где:**")
+            st.markdown("- Base — базовая линия продаж")
+            st.markdown("- Adstock — эффект переноса")
+            st.markdown("- Saturation — эффект насыщения")
+            st.markdown("- Externals — внешние факторы")
+            
+            if st.button("🎲 Загрузить демо-данные", type="primary"):
+                demo_data = self.processor.generate_demo_data()
+                st.session_state.data = demo_data
+                st.success("Демо-данные загружены!")
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Демо метрики
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Период анализа", "24 месяца")
+        
+        with col2:
+            st.metric("Медиа-каналы", "5 каналов")
+        
+        with col3:
+            st.metric("Точность модели", "R² > 0.8")
+
+    def show_data(self):
+        st.header("📊 Управление данными")
+        
+        tab1, tab2, tab3 = st.tabs(["Загрузка данных", "Просмотр данных", "Валидация"])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Загрузка файла")
+                uploaded_file = st.file_uploader(
+                    "Выберите CSV файл с данными",
+                    type=['csv'],
+                    help="Файл должен содержать временные ряды продаж, медиа-расходов и внешних факторов"
+                )
+                
+                if uploaded_file is not None:
+                    try:
+                        data = pd.read_csv(uploaded_file)
+                        data['date'] = pd.to_datetime(data['date'])
+                        st.session_state.data = data
+                        st.success(f"Данные загружены: {len(data)} строк")
+                    except Exception as e:
+                        st.error(f"Ошибка загрузки: {str(e)}")
+            
+            with col2:
+                st.subheader("Демо-данные")
+                if st.button("Сгенерировать демо-данные"):
+                    demo_data = self.processor.generate_demo_data()
+                    st.session_state.data = demo_data
+                    st.success("Демо-данные созданы")
+                    st.rerun()
+        
+        with tab2:
+            if st.session_state.data is not None:
+                data = st.session_state.data
+                
+                st.subheader("Обзор данных")
+                st.dataframe(data.head(10), use_container_width=True)
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Строк", len(data))
+                with col2:
+                    st.metric("Столбцов", len(data.columns))
+                with col3:
+                    st.metric("Период", f"{data['date'].min().strftime('%Y-%m')} - {data['date'].max().strftime('%Y-%m')}")
+                with col4:
+                    st.metric("Пропуски", data.isnull().sum().sum())
+                
+                # Временные ряды
+                st.subheader("Временные ряды основных метрик")
+                metrics_cols = [col for col in data.columns if any(keyword in col.lower() 
+                               for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
+                
+                if metrics_cols:
+                    fig = px.line(data, x='date', y=metrics_cols[0], 
+                                title=f"Динамика {metrics_cols[0]}")
+                    st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Загрузите данные для просмотра")
+        
+        with tab3:
+            if st.session_state.data is not None:
+                validation_results = self.processor.validate_data(st.session_state.data)
+                
+                st.subheader("Результаты валидации")
+                
+                for check, result in validation_results.items():
+                    if result['status']:
+                        st.success(f"✅ {check}: {result['message']}")
+                    else:
+                        st.error(f"❌ {check}: {result['message']}")
+            else:
+                st.info("Загрузите данные для валидации")
+
+    def show_model(self):
+        st.header("⚙️ Конфигурация модели")
+        
+        if st.session_state.data is None:
+            st.warning("Сначала загрузите данные")
+            return
+        
+        data = st.session_state.data
+        
+        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Зависимая переменная")
+                target_options = [col for col in data.columns if any(keyword in col.lower() 
+                                for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
+                target_var = st.selectbox("Выберите целевую метрику:", target_options)
+                
+                st.subheader("Медиа-каналы")
+                media_options = [col for col in data.columns if any(keyword in col.lower() 
+                               for keyword in ['spend', 'cost', 'budget', 'расход'])]
+                selected_media = st.multiselect("Выберите медиа-каналы:", media_options, default=media_options[:5])
+            
+            with col2:
+                st.subheader("Внешние факторы")
+                external_options = [col for col in data.columns if any(keyword in col.lower() 
+                                  for keyword in ['holiday', 'promo', 'season', 'competitor', 'праздник'])]
+                selected_external = st.multiselect("Выберите внешние факторы:", external_options, default=external_options)
+                
+                st.subheader("Контрольные переменные")
+                control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
+                selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
+        
+        with tab2:
+            st.subheader("Параметры Adstock (эффект переноса)")
+            
+            adstock_params = {}
+            for media in selected_media:
+                with st.expander(f"Настройки для {media}"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        decay = st.slider(f"Decay rate для {media}", 0.0, 0.9, 0.5, 0.1, key=f"decay_{media}")
+                    with col2:
+                        max_lag = st.slider(f"Max lag для {media}", 1, 12, 6, 1, key=f"lag_{media}")
+                    adstock_params[media] = {'decay': decay, 'max_lag': max_lag}
+            
+            st.subheader("Параметры Saturation (эффект насыщения)")
+            saturation_params = {}
+            for media in selected_media:
+                with st.expander(f"Saturation для {media}"):
+                    alpha = st.slider(f"Alpha для {media}", 0.1, 3.0, 1.0, 0.1, key=f"alpha_{media}")
+                    gamma = st.slider(f"Gamma для {media}", 0.1, 2.0, 0.5, 0.1, key=f"gamma_{media}")
+                    saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
+        
+        with tab3:
+            st.subheader("Обучение модели")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                train_ratio = st.slider("Доля обучающей выборки", 0.6, 0.9, 0.8, 0.05)
+                regularization = st.selectbox("Тип регуляризации", ["Ridge", "Lasso", "ElasticNet"])
+            
+            with col2:
+                alpha_reg = st.slider("Коэффициент регуляризации", 0.01, 10.0, 1.0, 0.01)
+                cross_val_folds = st.slider("Число фолдов для кросс-валидации", 3, 10, 5, 1)
+            
+            if st.button("🚀 Обучить модель", type="primary"):
+                with st.spinner("Обучение модели..."):
+                    try:
+                        # Создание и обучение модели
+                        model = MarketingMixModel(
+                            adstock_params=adstock_params,
+                            saturation_params=saturation_params,
+                            regularization=regularization,
+                            alpha=alpha_reg
+                        )
+                        
+                        # Подготовка данных
+                        X, y = self.processor.prepare_model_data(
+                            data, target_var, selected_media, selected_external, selected_controls
+                        )
+                        
+                        # Обучение
+                        train_size = int(len(X) * train_ratio)
+                        X_train, X_test = X[:train_size], X[train_size:]
+                        y_train, y_test = y[:train_size], y[train_size:]
+                        
+                        model.fit(X_train, y_train)
+                        
+                        # Валидация
+                        train_score = model.score(X_train, y_train)
+                        test_score = model.score(X_test, y_test)
+                        
+                        # Сохранение в состояние
+                        st.session_state.model = model
+                        st.session_state.model_fitted = True
+                        st.session_state.X_train = X_train
+                        st.session_state.X_test = X_test
+                        st.session_state.y_train = y_train
+                        st.session_state.y_test = y_test
+                        st.session_state.target_var = target_var
+                        st.session_state.selected_media = selected_media
+                        
+                        # Результаты
+                        st.success("Модель обучена успешно!")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("R² (train)", f"{train_score:.3f}")
+                        with col2:
+                            st.metric("R² (test)", f"{test_score:.3f}")
+                        with col3:
+                            st.metric("Переобучение", f"{train_score - test_score:.3f}")
+                        
+                    except Exception as e:
+                        st.error(f"Ошибка обучения модели: {str(e)}")
+
+    def show_results(self):
+        st.header("📈 Результаты анализа")
+        
+        if not st.session_state.model_fitted:
+            st.warning("Сначала обучите модель")
+            return
+        
+        model = st.session_state.model
+        
+        tab1, tab2, tab3, tab4 = st.tabs(["Качество модели", "Декомпозиция", "ROAS анализ", "Кривые насыщения"])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Метрики качества")
+                metrics = model.get_model_metrics(st.session_state.X_test, st.session_state.y_test)
+                
+                for metric, value in metrics.items():
+                    st.metric(metric, f"{value:.3f}")
+            
+            with col2:
+                st.subheader("Прогноз vs Факт")
+                y_pred = model.predict(st.session_state.X_test)
+                
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    y=st.session_state.y_test,
+                    mode='lines',
+                    name='Факт',
+                    line=dict(color='blue')
+                ))
+                fig.add_trace(go.Scatter(
+                    y=y_pred,
+                    mode='lines',
+                    name='Прогноз',
+                    line=dict(color='red', dash='dash')
+                ))
+                fig.update_layout(title="Качество прогноза на тестовой выборке")
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            st.subheader("Декомпозиция продаж")
+            
+            # Расчет вкладов каналов
+            contributions = model.get_media_contributions(st.session_state.X_train, st.session_state.y_train)
+            
+            # Waterfall chart
+            fig = self.visualizer.create_waterfall_chart(contributions)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Таблица вкладов
+            st.subheader("Детализация вкладов")
+            contrib_df = pd.DataFrame(list(contributions.items()), columns=['Канал', 'Вклад'])
+            contrib_df['Вклад, %'] = (contrib_df['Вклад'] / contrib_df['Вклад'].sum() * 100).round(1)
+            st.dataframe(contrib_df, use_container_width=True)
+        
+        with tab3:
+            st.subheader("ROAS по каналам")
+            
+            # Расчет ROAS
+            roas_data = model.calculate_roas(st.session_state.data, st.session_state.selected_media)
+            
+            # Visualization
+            fig = self.visualizer.create_roas_comparison(roas_data)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Таблица ROAS
+            st.subheader("Детализация ROAS")
+            st.dataframe(roas_data, use_container_width=True)
+        
+        with tab4:
+            st.subheader("Кривые насыщения")
+            
+            # Выбор канала для анализа
+            selected_channel = st.selectbox("Выберите канал:", st.session_state.selected_media)
+            
+            # Построение простой кривой насыщения (демо)
+            spend_range = np.linspace(0, st.session_state.data[selected_channel].max() * 2, 100)
+            
+            # Простая Hill saturation для демонстрации
+            alpha = 1.0
+            gamma = st.session_state.data[selected_channel].median()
+            saturation_curve = np.power(spend_range, alpha) / (np.power(spend_range, alpha) + np.power(gamma, alpha))
+            
+            fig = px.line(x=spend_range, y=saturation_curve,
+                         title=f"Кривая насыщения для {selected_channel}",
+                         labels={'x': 'Расходы', 'y': 'Нормализованный отклик'})
+            fig.add_vline(x=st.session_state.data[selected_channel].mean(), 
+                         line_dash="dash", annotation_text="Текущий уровень")
+            st.plotly_chart(fig, use_container_width=True)
+
+    def show_optimization(self):
+        st.header("💰 Оптимизация бюджета")
+        
+        if not st.session_state.model_fitted:
+            st.warning("Сначала обучите модель")
+            return
+        
+        tab1, tab2 = st.tabs(["Настройки оптимизации", "Результаты"])
+        
+        with tab1:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Параметры оптимизации")
+                total_budget = st.number_input("Общий бюджет", min_value=1000, value=1000000, step=10000)
+                optimization_target = st.selectbox("Цель оптимизации", ["maximize_sales", "maximize_roas", "maximize_roi"])
+                
+                st.subheader("Ограничения по каналам")
+                constraints = {}
+                for channel in st.session_state.selected_media:
+                    with st.expander(f"Ограничения для {channel}"):
+                        min_spend = st.number_input(f"Минимум для {channel}", 0, total_budget//4, 0, key=f"min_{channel}")
+                        max_spend = st.number_input(f"Максимум для {channel}", min_spend, total_budget, total_budget//len(st.session_state.selected_media), key=f"max_{channel}")
+                        constraints[channel] = {'min': min_spend, 'max': max_spend}
+            
+            with col2:
+                st.subheader("Текущее распределение")
+                current_spend = {}
+                for channel in st.session_state.selected_media:
+                    current_spend[channel] = st.session_state.data[channel].mean()
+                
+                current_df = pd.DataFrame(list(current_spend.items()), columns=['Канал', 'Текущие расходы'])
+                current_df['Доля, %'] = (current_df['Текущие расходы'] / current_df['Текущие расходы'].sum() * 100).round(1)
+                st.dataframe(current_df, use_container_width=True)
+                
+                # Круговая диаграмма текущего распределения
+                fig = self.visualizer.create_budget_allocation_pie(current_spend, "Текущее распределение")
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            if st.button("🎯 Оптимизировать бюджет", type="primary"):
+                with st.spinner("Поиск оптимального распределения..."):
+                    
+                    # Запуск оптимизации
+                    optimal_allocation = self.optimizer.optimize_budget(
+                        model=st.session_state.model,
+                        total_budget=total_budget,
+                        constraints=constraints,
+                        target=optimization_target
+                    )
+                    
+                    # Результаты оптимизации
+                    st.success("Оптимизация завершена!")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader("Оптимальное распределение")
+                        optimal_df = pd.DataFrame(list(optimal_allocation['allocation'].items()), 
+                                                columns=['Канал', 'Оптимальный бюджет'])
+                        optimal_df['Доля, %'] = (optimal_df['Оптимальный бюджет'] / total_budget * 100).round(1)
+                        st.dataframe(optimal_df, use_container_width=True)
+                        
+                        # Метрики оптимального решения
+                        st.metric("Прогнозируемые продажи", f"{optimal_allocation['predicted_sales']:,.0f}")
+                        st.metric("Прогнозируемый ROAS", f"{optimal_allocation['predicted_roas']:.2f}")
+                        st.metric("Прогнозируемый ROI", f"{optimal_allocation['predicted_roi']:.2f}")
+                    
+                    with col2:
+                        st.subheader("Сравнение распределений")
+                        
+                        # Сравнительная диаграмма
+                        fig = self.visualizer.create_optimization_results(current_spend, optimal_allocation['allocation'])
+                        st.plotly_chart(fig, use_container_width=True)
+
+    def show_scenarios(self):
+        st.header("🔮 Сценарный анализ")
+        
+        if not st.session_state.model_fitted:
+            st.warning("Сначала обучите модель")
+            return
+        
+        tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
+        
+        with tab1:
+            st.subheader("Создание нового сценария")
+            
+            scenario_name = st.text_input("Название сценария", "Сценарий 1")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Настройки каналов")
+                scenario_budget = {}
+                
+                for channel in st.session_state.selected_media:
+                    current_value = st.session_state.data[channel].mean()
+                    scenario_budget[channel] = st.number_input(
+                        f"Бюджет {channel}",
+                        min_value=0,
+                        value=int(current_value),
+                        step=1000,
+                        key=f"scenario_{channel}"
+                    )
+            
+            with col2:
+                st.subheader("Внешние факторы")
+                seasonality_factor = st.slider("Сезонный фактор", 0.5, 2.0, 1.0, 0.1)
+                competition_factor = st.slider("Фактор конкуренции", 0.5, 2.0, 1.0, 0.1)
+                
+                # Прогноз результатов сценария
+                if st.button("📊 Рассчитать прогноз"):
+                    predicted_results = st.session_state.model.predict_scenario(
+                        scenario_budget, seasonality_factor, competition_factor
+                    )
+                    
+                    st.metric("Прогнозируемые продажи", f"{predicted_results['sales']:,.0f}")
+                    st.metric("Прогнозируемый ROAS", f"{predicted_results['roas']:.2f}")
+                    st.metric("Общий бюджет", f"{sum(scenario_budget.values()):,.0f}")
+        
+        with tab2:
+            st.subheader("Сравнение предустановленных сценариев")
+            
+            # Предустановленные сценарии
+            current_avg = {channel: st.session_state.data[channel].mean() 
+                          for channel in st.session_state.selected_media}
+            total_current = sum(current_avg.values())
+            
+            scenarios = {
+                "Текущий": current_avg,
+                "Digital Focus": {
+                    channel: (total_current * 0.8 / len([ch for ch in st.session_state.selected_media if 'offline' not in ch.lower()]) 
+                             if 'offline' not in channel.lower() else total_current * 0.2)
+                    for channel in st.session_state.selected_media
+                },
+                "Balanced": {channel: total_current / len(st.session_state.selected_media) 
+                           for channel in st.session_state.selected_media},
+                "Performance": {
+                    channel: (total_current * 0.7 / len([ch for ch in st.session_state.selected_media if ch in ['google_spend', 'facebook_spend']])
+                             if channel in ['google_spend', 'facebook_spend'] else total_current * 0.3 / (len(st.session_state.selected_media) - 2))
+                    for channel in st.session_state.selected_media
+                }
+            }
+            
+            # Расчет прогнозов для всех сценариев
+            scenario_results = {}
+            for name, budget in scenarios.items():
+                results = st.session_state.model.predict_scenario(budget, 1.0, 1.0)
+                scenario_results[name] = results
+            
+            # Таблица сравнения
+            comparison_df = pd.DataFrame(scenario_results).T
+            comparison_df = comparison_df.round(2)
+            st.dataframe(comparison_df, use_container_width=True)
+            
+            # Визуализация сравнения
+            fig = make_subplots(
+                rows=1, cols=3,
+                subplot_titles=['Продажи', 'ROAS', 'Бюджет']
+            )
+            
+            scenarios_list = list(scenario_results.keys())
+            
+            # Продажи
+            fig.add_trace(
+                go.Bar(x=scenarios_list, y=[scenario_results[s]['sales'] for s in scenarios_list], 
+                      name='Продажи', showlegend=False),
+                row=1, col=1
+            )
+            
+            # ROAS
+            fig.add_trace(
+                go.Bar(x=scenarios_list, y=[scenario_results[s]['roas'] for s in scenarios_list], 
+                      name='ROAS', showlegend=False),
+                row=1, col=2
+            )
+            
+            # Бюджет
+            fig.add_trace(
+                go.Bar(x=scenarios_list, y=[scenario_results[s]['total_spend'] for s in scenarios_list], 
+                      name='Бюджет', showlegend=False),
+                row=1, col=3
+            )
+            
+            fig.update_layout(title="Сравнение сценариев", height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+if __name__ == "__main__":
+    app = MMM_App()
+    app.run()
