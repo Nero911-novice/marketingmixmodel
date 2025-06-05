@@ -189,17 +189,58 @@ class MarketingMixModel:
         return r2_score(y, y_pred)
     
     def get_model_metrics(self, X_test, y_test):
-        """Получить полный набор метрик качества модели."""
+        """Получить полный набор метрик качества модели в бизнес-терминах."""
         y_pred = self.predict(X_test)
         
+        r2 = r2_score(y_test, y_pred)
+        mape = mean_absolute_percentage_error(y_test, y_pred)
+        mae = np.mean(np.abs(y_test - y_pred))
+        rmse = np.sqrt(np.mean((y_test - y_pred) ** 2))
+        
+        # Переводим в бизнес-термины
         metrics = {
-            'R²': r2_score(y_test, y_pred),
-            'MAPE': mean_absolute_percentage_error(y_test, y_pred),
-            'MAE': np.mean(np.abs(y_test - y_pred)),
-            'RMSE': np.sqrt(np.mean((y_test - y_pred) ** 2))
+            'Качество прогноза': r2,
+            'Точность модели (%)': 100 - (mape * 100),  # Конвертируем MAPE в точность
+            'Средняя ошибка': mae,
+            'Типичная ошибка': rmse
         }
         
         return metrics
+    
+    def get_model_quality_assessment(self, X_test, y_test):
+        """Получить качественную оценку модели для бизнеса."""
+        metrics = self.get_model_metrics(X_test, y_test)
+        
+        r2 = metrics['Качество прогноза']
+        accuracy = metrics['Точность модели (%)']
+        
+        # Определяем статус модели
+        if r2 >= 0.8 and accuracy >= 85:
+            status = "🟢 Модель работает отлично!"
+            recommendation = "Рекомендации модели можно смело использовать для планирования бюджета"
+            quality_score = 95
+        elif r2 >= 0.7 and accuracy >= 75:
+            status = "🟡 Модель работает хорошо"
+            recommendation = "Модель подходит для планирования, но стоит учитывать погрешность"
+            quality_score = 80
+        elif r2 >= 0.5 and accuracy >= 60:
+            status = "🟠 Модель работает удовлетворительно"
+            recommendation = "Используйте с осторожностью, рекомендации приблизительные"
+            quality_score = 65
+        else:
+            status = "🔴 Модель работает плохо"
+            recommendation = "Не рекомендуется использовать для принятия решений"
+            quality_score = 40
+        
+        return {
+            'status': status,
+            'quality_score': quality_score,
+            'recommendation': recommendation,
+            'business_explanation': {
+                'quality': f"Модель объясняет {r2*100:.0f}% изменений в ваших продажах",
+                'accuracy': f"В среднем ошибается на {100-accuracy:.0f}% - это {'хорошо' if accuracy >= 75 else 'приемлемо' if accuracy >= 60 else 'много'} для планирования"
+            }
+        }
     
     def get_media_contributions(self, X, y):
         """Рассчитать вклад каждого медиа-канала в продажи."""
@@ -1556,34 +1597,96 @@ class MMM_App:
         tab1, tab2, tab3, tab4 = st.tabs(["Качество модели", "Декомпозиция", "ROAS анализ", "Кривые насыщения"])
         
         with tab1:
+            # Объяснение метрик качества
+            with st.expander("❓ Что показывают метрики качества модели?", expanded=False):
+                st.markdown("""
+                **Метрики качества** показывают, насколько хорошо модель научилась предсказывать ваши продажи:
+                
+                📊 **Качество прогноза** (было R²):
+                - Показывает, какую долю изменений в продажах модель может объяснить
+                - **90%** = отлично! Модель понимает 90% того, почему продажи растут или падают
+                - **70%** = хорошо, модель улавливает основные закономерности
+                - **50%** = слабо, модель видит только половину картины
+                
+                🎯 **Точность модели** (было MAPE):
+                - Показывает, насколько точно модель предсказывает количество заказов
+                - **90%** = модель очень точная, ошибается только на 10%
+                - **80%** = хорошая точность для бизнес-планирования
+                - **60%** = приемлемо, но нужна осторожность
+                
+                📏 **Средняя/Типичная ошибка**:
+                - Показывает, на сколько заказов в среднем ошибается модель
+                - Например: если ошибка 500 заказов, а у вас 5000 заказов в месяц = это 10% ошибка
+                
+                🎯 **Главное правило**: Если модель показывает 🟢 или 🟡 - можно использовать для планирования!
+                """)
+            
             col1, col2 = st.columns(2)
             
             with col1:
-                st.subheader("Метрики качества")
-                metrics = model.get_model_metrics(st.session_state.X_test, st.session_state.y_test)
+                st.subheader("📊 Оценка качества модели")
                 
-                for metric, value in metrics.items():
-                    st.metric(metric, f"{value:.3f}")
+                # Получаем качественную оценку
+                quality_assessment = model.get_model_quality_assessment(st.session_state.X_test, st.session_state.y_test)
+                
+                # Показываем статус модели
+                st.markdown(f"### {quality_assessment['status']}")
+                st.progress(quality_assessment['quality_score'] / 100)
+                st.markdown(f"**Общая оценка:** {quality_assessment['quality_score']}/100")
+                
+                # Бизнес-объяснение
+                st.success(quality_assessment['business_explanation']['quality'])
+                st.info(quality_assessment['business_explanation']['accuracy'])
+                st.markdown(f"**Рекомендация:** {quality_assessment['recommendation']}")
+                
+                # Детальные метрики (скрыты в expander)
+                with st.expander("🔧 Технические детали", expanded=False):
+                    metrics = model.get_model_metrics(st.session_state.X_test, st.session_state.y_test)
+                    for metric, value in metrics.items():
+                        if 'Точность' in metric:
+                            st.metric(metric, f"{value:.1f}%")
+                        elif 'Качество' in metric:
+                            st.metric(metric, f"{value:.3f} ({value*100:.0f}%)")
+                        else:
+                            st.metric(metric, f"{value:,.0f}")
             
             with col2:
-                st.subheader("Прогноз vs Факт")
+                st.subheader("📈 Прогноз vs Реальность")
                 y_pred = model.predict(st.session_state.X_test)
                 
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     y=st.session_state.y_test,
-                    mode='lines',
-                    name='Факт',
-                    line=dict(color='blue')
+                    mode='lines+markers',
+                    name='Реальные заказы',
+                    line=dict(color='blue', width=3),
+                    marker=dict(size=6)
                 ))
                 fig.add_trace(go.Scatter(
                     y=y_pred,
-                    mode='lines',
-                    name='Прогноз',
-                    line=dict(color='red', dash='dash')
+                    mode='lines+markers',
+                    name='Прогноз модели',
+                    line=dict(color='red', width=2, dash='dash'),
+                    marker=dict(size=4)
                 ))
-                fig.update_layout(title="Качество прогноза на тестовой выборке")
+                
+                fig.update_layout(
+                    title="Насколько точно модель предсказывает заказы",
+                    xaxis_title="Период времени",
+                    yaxis_title="Количество заказов",
+                    height=400,
+                    template="plotly_white"
+                )
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # Интерпретация графика
+                correlation = np.corrcoef(st.session_state.y_test, y_pred)[0, 1]
+                if correlation >= 0.9:
+                    st.success("✅ Отлично! Прогноз очень близко следует реальности")
+                elif correlation >= 0.7:
+                    st.info("👍 Хорошо! Прогноз в целом соответствует тренду")
+                else:
+                    st.warning("⚠️ Модель не очень точно предсказывает изменения")
         
         with tab2:
             st.subheader("Декомпозиция продаж")
@@ -1691,62 +1794,272 @@ class MMM_App:
         with tab4:
             st.subheader("Кривые насыщения")
             
-            # Выбор канала для анализа
-            selected_channel = st.selectbox("Выберите канал:", st.session_state.selected_media)
+            # Объяснение кривых насыщения
+            with st.expander("❓ Что такое кривые насыщения?", expanded=True):
+                st.markdown("""
+                **Кривые насыщения** показывают, как эффективность рекламного канала меняется при увеличении бюджета.
+                
+                🎯 **Простыми словами:**
+                - Представьте, что вы поливаете растение водой
+                - Сначала каждая капля воды очень помогает росту
+                - Но если лить слишком много - эффект уменьшается
+                - То же самое с рекламой!
+                
+                📈 **Что показывает кривая:**
+                - **Начало кривой** = каждый рубль рекламы приносит много заказов
+                - **Середина** = эффективность стабильная
+                - **Конец кривой** = дополнительные рубли приносят мало заказов (насыщение)
+                
+                💡 **Практическое применение:**
+                - **Крутой рост** в начале = канал недофинансирован, можно увеличить бюджет
+                - **Пологая кривая** = канал близок к насыщению, дополнительные деньги неэффективны
+                - **Вертикальная линия** = ваш текущий уровень расходов
+                
+                🎯 **Идеальная стратегия:** Тратить до точки, где кривая начинает выравниваться
+                """)
             
-            # Построение простой кривой насыщения (демо)
-            spend_range = np.linspace(0, st.session_state.data[selected_channel].max() * 2, 100)
+            # Выбор канала для анализа
+            selected_channel = st.selectbox("Выберите канал для анализа:", st.session_state.selected_media)
+            
+            # Построение простой кривой насыщения
+            current_spend = st.session_state.data[selected_channel].mean()
+            max_spend = current_spend * 3  # Показываем до 3x текущих расходов
+            spend_range = np.linspace(0, max_spend, 100)
             
             # Простая Hill saturation для демонстрации
             alpha = 1.0
-            gamma = st.session_state.data[selected_channel].median()
+            gamma = current_spend * 0.7  # Точка полунасыщения на 70% от текущих расходов
             saturation_curve = np.power(spend_range, alpha) / (np.power(spend_range, alpha) + np.power(gamma, alpha))
             
-            fig = px.line(x=spend_range, y=saturation_curve,
-                         title=f"Кривая насыщения для {selected_channel}",
-                         labels={'x': 'Расходы', 'y': 'Нормализованный отклик'})
-            fig.add_vline(x=st.session_state.data[selected_channel].mean(), 
-                         line_dash="dash", annotation_text="Текущий уровень")
+            fig = go.Figure()
+            
+            # Кривая насыщения
+            fig.add_trace(go.Scatter(
+                x=spend_range,
+                y=saturation_curve,
+                mode='lines',
+                name='Кривая насыщения',
+                line=dict(color='blue', width=3)
+            ))
+            
+            # Текущий уровень расходов
+            current_saturation = np.power(current_spend, alpha) / (np.power(current_spend, alpha) + np.power(gamma, alpha))
+            fig.add_trace(go.Scatter(
+                x=[current_spend],
+                y=[current_saturation],
+                mode='markers',
+                name='Текущие расходы',
+                marker=dict(color='red', size=12, symbol='diamond'),
+                hovertemplate=f"Текущие расходы: {current_spend:,.0f}<br>Эффективность: {current_saturation:.2f}"
+            ))
+            
+            # Зона эффективности
+            efficient_spend = gamma * 1.2  # 120% от точки полунасыщения
+            fig.add_vrect(
+                x0=0, x1=efficient_spend,
+                fillcolor="green", opacity=0.1,
+                annotation_text="Эффективная зона", annotation_position="top left"
+            )
+            
+            fig.add_vrect(
+                x0=efficient_spend, x1=max_spend,
+                fillcolor="orange", opacity=0.1,
+                annotation_text="Зона насыщения", annotation_position="top right"
+            )
+            
+            fig.update_layout(
+                title=f"Кривая насыщения для {selected_channel.replace('_spend', '').title()}",
+                xaxis_title="Расходы на рекламу (руб/месяц)",
+                yaxis_title="Эффективность (нормализованная)",
+                height=500,
+                template="plotly_white"
+            )
+            
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Интерпретация результатов
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📊 Анализ текущего уровня")
+                if current_spend < gamma:
+                    st.success("🟢 **Недофинансирован**: Можно увеличить бюджет для лучших результатов")
+                    recommendation = f"Рекомендуется увеличить бюджет до {gamma*1.2:,.0f} руб/месяц"
+                elif current_spend < efficient_spend:
+                    st.info("🟡 **Оптимальный уровень**: Хорошее соотношение затрат и результата")
+                    recommendation = "Текущий уровень расходов близок к оптимальному"
+                else:
+                    st.warning("🟠 **Близко к насыщению**: Дополнительные расходы малоэффективны")
+                    recommendation = f"Рассмотрите перераспределение части бюджета на другие каналы"
+                
+                st.info(f"💡 **Рекомендация**: {recommendation}")
+            
+            with col2:
+                st.subheader("🎯 Ключевые точки")
+                st.metric("Текущие расходы", f"{current_spend:,.0f} руб")
+                st.metric("Точка полунасыщения", f"{gamma:,.0f} руб", 
+                         help="Уровень расходов, при котором достигается 50% максимального эффекта")
+                st.metric("Граница эффективности", f"{efficient_spend:,.0f} руб",
+                         help="После этого уровня каждый дополнительный рубль приносит мало результата")
+                
+                # Потенциал роста
+                potential_increase = (efficient_spend - current_spend) / current_spend * 100 if current_spend > 0 else 0
+                if potential_increase > 20:
+                    st.success(f"📈 Потенциал роста: +{potential_increase:.0f}%")
+                elif potential_increase > 0:
+                    st.info(f"📈 Потенциал роста: +{potential_increase:.0f}%")
+                else:
+                    st.warning("📊 Канал близок к насыщению")
 
     def show_optimization(self):
         st.header("💰 Оптимизация бюджета")
         
+        # Главное объяснение раздела
+        with st.expander("❓ Что такое оптимизация бюджета?", expanded=True):
+            st.markdown("""
+            **Оптимизация бюджета** - это автоматический поиск наилучшего способа распределить ваши рекламные деньги.
+            
+            🎯 **Простой пример:**
+            У вас есть 1 млн рублей на рекламу. Вопрос: как их разделить между Facebook, Google, TikTok?
+            
+            **Интуитивный подход:**
+            - Facebook: 300,000 руб (30%)
+            - Google: 500,000 руб (50%)  
+            - TikTok: 200,000 руб (20%)
+            - **Результат:** 5,000 заказов
+            
+            **После оптимизации:**
+            - Facebook: 250,000 руб (25%)
+            - Google: 600,000 руб (60%)
+            - TikTok: 150,000 руб (15%)
+            - **Результат:** 5,400 заказов (+400 заказов!)
+            
+            💡 **Как это работает:**
+            1. Модель анализирует эффективность каждого канала
+            2. Находит оптимальное соотношение для максимального результата
+            3. Учитывает ваши ограничения (минимум/максимум по каналам)
+            
+            🎯 **Цели оптимизации:**
+            - **Максимум заказов** = получить как можно больше заказов
+            - **Максимум ROAS** = получить максимальную отдачу с рубля
+            - **Максимум ROI** = получить максимальную прибыль
+            """)
+        
         if not st.session_state.model_fitted:
-            st.warning("Сначала обучите модель")
+            st.warning("⚠️ Сначала обучите модель в разделе 'Модель'")
+            st.info("💡 Модель нужна для анализа эффективности каналов и поиска оптимального распределения")
             return
         
-        tab1, tab2 = st.tabs(["Настройки оптимизации", "Результаты"])
+        tab1, tab2 = st.tabs(["⚙️ Настройки оптимизации", "📊 Результаты оптимизации"])
         
         with tab1:
+            st.subheader("⚙️ Настройки оптимизации")
+            
+            # Объяснение настроек
+            with st.expander("❓ Как настроить оптимизацию?", expanded=False):
+                st.markdown("""
+                **Настройки помогают адаптировать оптимизацию под ваши бизнес-ограничения:**
+                
+                💰 **Общий бюджет:**
+                - Сколько всего денег у вас есть на рекламу в месяц
+                - Система распределит эти деньги между каналами оптимально
+                
+                🎯 **Цель оптимизации:**
+                - **Максимум заказов** = приоритет количеству (подходит для роста)
+                - **Максимум ROAS** = приоритет эффективности (подходит для прибыльности)
+                - **Максимум ROI** = приоритет чистой прибыли
+                
+                🚧 **Ограничения по каналам:**
+                - **Минимум** = меньше этой суммы тратить нельзя (например, минимум по контракту)
+                - **Максимум** = больше этой суммы тратить нельзя (например, лимит команды)
+                - Без ограничений система может предложить потратить 0 или 100% на один канал
+                
+                **Пример ограничений:**
+                - Facebook: мин 100к (команда справится), макс 500к (больше не потянем)
+                - Google: мин 200к (конкуренция), макс без ограничений
+                """)
+            
             col1, col2 = st.columns(2)
             
             with col1:
-                st.subheader("Параметры оптимизации")
-                total_budget = st.number_input("Общий бюджет", min_value=1000, value=1000000, step=10000)
-                optimization_target = st.selectbox("Цель оптимизации", ["maximize_sales", "maximize_roas", "maximize_roi"])
+                st.subheader("💰 Основные параметры")
+                total_budget = st.number_input(
+                    "Общий месячный бюджет (руб)", 
+                    min_value=10000, 
+                    value=1000000, 
+                    step=50000,
+                    help="Общая сумма, которую вы готовы тратить на рекламу в месяц"
+                )
                 
-                st.subheader("Ограничения по каналам")
-                constraints = {}
-                for channel in st.session_state.selected_media:
-                    with st.expander(f"Ограничения для {channel}"):
-                        min_spend = st.number_input(f"Минимум для {channel}", 0, total_budget//4, 0, key=f"min_{channel}")
-                        max_spend = st.number_input(f"Максимум для {channel}", min_spend, total_budget, total_budget//len(st.session_state.selected_media), key=f"max_{channel}")
-                        constraints[channel] = {'min': min_spend, 'max': max_spend}
-            
+                optimization_target = st.selectbox(
+                    "Цель оптимизации", 
+                    ["maximize_sales", "maximize_roas", "maximize_roi"],
+                    format_func=lambda x: {
+                        "maximize_sales": "📈 Максимум заказов (рост объемов)",
+                        "maximize_roas": "💰 Максимум ROAS (эффективность)",
+                        "maximize_roi": "💎 Максимум ROI (прибыльность)"
+                    }[x],
+                    help="Что важнее: больше заказов, выше эффективность или больше прибыли?"
+                )
+                
+                # Показываем текущий расход для сравнения
+                current_total = sum(st.session_state.data[ch].mean() for ch in st.session_state.selected_media)
+                st.info(f"💡 Текущие расходы: {current_total:,.0f} руб/месяц")
+                
+                if total_budget != current_total:
+                    change_pct = ((total_budget - current_total) / current_total * 100)
+                    if change_pct > 0:
+                        st.success(f"📈 Увеличение бюджета на {change_pct:.0f}%")
+                    else:
+                        st.warning(f"📉 Сокращение бюджета на {abs(change_pct):.0f}%")
+                
             with col2:
-                st.subheader("Текущее распределение")
-                current_spend = {}
-                for channel in st.session_state.selected_media:
-                    current_spend[channel] = st.session_state.data[channel].mean()
+                st.subheader("🚧 Ограничения по каналам")
                 
-                current_df = pd.DataFrame(list(current_spend.items()), columns=['Канал', 'Текущие расходы'])
-                current_df['Доля, %'] = (current_df['Текущие расходы'] / current_df['Текущие расходы'].sum() * 100).round(1)
-                st.dataframe(current_df, use_container_width=True)
+                # Добавляем переключатель для ограничений
+                use_constraints = st.checkbox(
+                    "Использовать ограничения по каналам", 
+                    value=False,
+                    help="Если выключено, система может предложить любое распределение"
+                )
                 
-                # Круговая диаграмма текущего распределения
-                fig = self.visualizer.create_budget_allocation_pie(current_spend, "Текущее распределение")
-                st.plotly_chart(fig, use_container_width=True)
+                constraints = {}
+                if use_constraints:
+                    st.info("💡 Установите реалистичные ограничения на основе возможностей вашей команды")
+                    
+                    for channel in st.session_state.selected_media:
+                        with st.expander(f"⚙️ {channel.replace('_spend', '').title()}", expanded=False):
+                            current_avg = st.session_state.data[channel].mean()
+                            
+                            col_min, col_max = st.columns(2)
+                            with col_min:
+                                min_spend = st.number_input(
+                                    f"Минимум", 
+                                    min_value=0, 
+                                    max_value=total_budget//2, 
+                                    value=max(0, int(current_avg * 0.5)),
+                                    step=10000,
+                                    key=f"min_{channel}",
+                                    help="Меньше этой суммы тратить нельзя/неэффективно"
+                                )
+                            with col_max:
+                                max_spend = st.number_input(
+                                    f"Максимум", 
+                                    min_value=min_spend, 
+                                    max_value=total_budget, 
+                                    value=min(total_budget, int(current_avg * 2)),
+                                    step=10000,
+                                    key=f"max_{channel}",
+                                    help="Больше этой суммы тратить нельзя/неэффективно"
+                                )
+                            
+                            constraints[channel] = {'min': min_spend, 'max': max_spend}
+                            
+                            # Показываем текущий уровень для сравнения
+                            st.caption(f"Сейчас тратите: {current_avg:,.0f} руб/месяц")
+                else:
+                    st.info("🔓 Ограничения отключены - система найдет полностью оптимальное распределение")
+                    constraints = {}
         
         with tab2:
             if st.button("🎯 Оптимизировать бюджет", type="primary"):
