@@ -1919,17 +1919,69 @@ class MMM_App:
                 st.info("💡 **Решение**: Попробуйте переобучить модель с другими параметрами в разделе 'Модель'")
         
         with tab3:  # ROAS анализ
+
+            # блок восстановлен после конфликта слияния
+            st.subheader("ROAS по каналам")
+
+            # Краткое объяснение метрики
+
             # Добавляем объяснение ROAS
+          main
             with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
                 st.markdown("""
                 ### Return on Advertising Spend (ROAS) — Научное определение
 
+
+                **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение инкрементальной выручки к рекламным затратам:
+
                 **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение
                 инкрементальной выручки к рекламным затратам:
+          main
 
                 **ROAS = Incremental Revenue / Advertising Spend**
 
                 **Математическая интерпретация:**
+
+                - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
+                - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
+                - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
+
+                **Методологические особенности в MMM:**
+                1. **Инкрементальность vs. Корреляция**
+                   - MMM измеряет причинно-следственную связь через контрольные переменные
+                   - Традиционная аналитика показывает корреляционную связь
+                   - Инкрементальный ROAS всегда ниже корреляционного
+
+                2. **Временные эффекты**
+                   - Краткосрочный ROAS: эффект в течение 1-4 недель
+                   - Долгосрочный ROAS: включает adstock эффекты (до 12-52 недель)
+                   - MMM рассчитывает полный (долгосрочный) ROAS
+                """)
+
+            try:
+                if hasattr(st.session_state, 'data') and st.session_state.data is not None:
+                    roas_data = model.calculate_roas(st.session_state.data, st.session_state.selected_media)
+
+                    if not roas_data.empty:
+                        fig = self.visualizer.create_roas_comparison(roas_data)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.subheader("Детализация ROAS")
+                        st.dataframe(roas_data, use_container_width=True)
+                    else:
+                        st.warning("Не удалось рассчитать ROAS. Проверьте данные.")
+                else:
+                    st.warning("Данные для расчета ROAS недоступны.")
+
+            except Exception as e:
+                st.error(f"Ошибка при расчете ROAS: {str(e)}")
+                demo_roas = pd.DataFrame({
+                    'Channel': ['Facebook', 'Google', 'TikTok'],
+                    'ROAS': [2.1, 2.8, 1.5]
+                })
+                fig = self.visualizer.create_roas_comparison(demo_roas)
+                st.plotly_chart(fig, use_container_width=True)
+
             - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
             - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
             - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
@@ -1975,7 +2027,7 @@ class MMM_App:
             - Игнорирует брендинговые эффекты
             - Может недооценивать upper-funnel активности
             """)
-        
+                
         with tab4:
             st.subheader("Кривые насыщения")
             
