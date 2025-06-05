@@ -30,7 +30,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-**Откройте браузер:** `http://localhost:8501`
+**Откройте браузер:** `https://marketingmix.streamlit.app/`
 
 ## 🛠 Технологический стек
 
@@ -215,35 +215,6 @@ Saturation = Media^α / (Media^α + γ^α)
 - Проверьте наличие столбца 'date'
 - Удалите специальные символы из названий столбцов
 
-## 📞 Поддержка и контакты
-
-### Техническая поддержка
-- **Issues**: Создавайте issue в репозитории
-- **Документация**: Встроенные подсказки в интерфейсе
-- **Email**: [your-email@domain.com]
-
-### Развитие проекта
-- **Feature requests**: Предложения новой функциональности
-- **Bug reports**: Сообщения об ошибках
-- **Contributions**: Pull requests приветствуются
-
-## 📚 Дополнительные ресурсы
-
-### Научная литература
-- [Econometric Analysis of Marketing Mix](https://example.com)
-- [Media Mix Modeling Best Practices](https://example.com)
-- [Causal Inference in Marketing](https://example.com)
-
-### Полезные ссылки
-- [Streamlit Documentation](https://docs.streamlit.io)
-- [Scikit-learn User Guide](https://scikit-learn.org/stable/user_guide.html)
-- [Marketing Mix Modeling Guide](https://example.com)
-
----
-
-<div align="center">
-
-**[📚 Документация](#) • [🐛 Issues](#) • [💬 Discussions](#)**
 
 *Разработано для научно обоснованного управления маркетинговыми инвестициями*
 
