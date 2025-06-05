@@ -1421,17 +1421,17 @@ class MMM_App:
                 st.info("Загрузите данные для валидации")
 
     def show_model(self):
-       st.header("⚙️ Конфигурация модели")
-    
-       if st.session_state.data is None:
-        st.warning("Сначала загрузите данные")
-        return
-    
-    data = st.session_state.data
-    
-    # Добавляем общее объяснение MMM
-    with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
-        st.markdown("""
+        st.header("⚙️ Конфигурация модели")
+
+        if st.session_state.data is None:
+            st.warning("Сначала загрузите данные")
+            return
+
+        data = st.session_state.data
+
+        # Добавляем общее объяснение MMM
+        with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
+            st.markdown("""
         ### Теоретическая основа Marketing Mix Modeling
         
         **Marketing Mix Model** представляет собой эконометрическую модель, основанную на регрессионном анализе временных рядов. 
@@ -1464,12 +1464,12 @@ class MMM_App:
         - Гомоскедастичность случайных ошибок
         """)
     
-    tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
-    
-    with tab1:
-        # Добавляем объяснение переменных модели
-        with st.expander("📖 Типология переменных в MMM", expanded=True):
-            st.markdown("""
+        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+
+        with tab1:
+            # Добавляем объяснение переменных модели
+            with st.expander("📖 Типология переменных в MMM", expanded=True):
+                st.markdown("""
             ### Классификация переменных в Marketing Mix Model
             
             **1. Зависимая переменная (Target Variable)**
@@ -1519,10 +1519,10 @@ class MMM_App:
             control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
             selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
     
-    with tab2:
-        # Добавляем объяснение параметров трансформации
-        with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
-            st.markdown("""
+        with tab2:
+            # Добавляем объяснение параметров трансформации
+            with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
+                st.markdown("""
             ### Adstock трансформация (Эффект переноса)
             
             **Теоретическое обоснование:**
@@ -1592,10 +1592,10 @@ class MMM_App:
                                 help="Точка полунасыщения относительно средних расходов")
                 saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
     
-    with tab3:
-        # Добавляем объяснение обучения модели
-        with st.expander("📊 Методология обучения и валидации модели", expanded=True):
-            st.markdown("""
+        with tab3:
+            # Добавляем объяснение обучения модели
+            with st.expander("📊 Методология обучения и валидации модели", expanded=True):
+                st.markdown("""
             ### Стратегии машинного обучения в MMM
             
             **1. Регуляризация (Regularization)**
@@ -1918,18 +1918,18 @@ class MMM_App:
                 st.error(f"Ошибка при расчете декомпозиции: {str(e)}")
                 st.info("💡 **Решение**: Попробуйте переобучить модель с другими параметрами в разделе 'Модель'")
         
-       with tab3:  # ROAS анализ
-        # Добавляем объяснение ROAS
-        with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
-            st.markdown("""
-            ### Return on Advertising Spend (ROAS) — Научное определение
-            
-            **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение 
-            инкрементальной выручки к рекламным затратам:
-            
-            **ROAS = Incremental Revenue / Advertising Spend**
-            
-            **Математическая интерпретация:**
+        with tab3:  # ROAS анализ
+            # Добавляем объяснение ROAS
+            with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
+                st.markdown("""
+                ### Return on Advertising Spend (ROAS) — Научное определение
+
+                **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение
+                инкрементальной выручки к рекламным затратам:
+
+                **ROAS = Incremental Revenue / Advertising Spend**
+
+                **Математическая интерпретация:**
             - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
             - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
             - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
@@ -2284,10 +2284,10 @@ class MMM_App:
 
     def show_scenarios(self):
         st.header("🔮 Сценарный анализ")
-    
-    # Добавляем общее объяснение сценарного анализа
-    with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
-        st.markdown("""
+
+        # Добавляем общее объяснение сценарного анализа
+        with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
+            st.markdown("""
         ### Сценарное планирование в Marketing Mix Modeling
         
         **Определение:**
@@ -2335,16 +2335,16 @@ class MMM_App:
         - 0.8 = снижение конкурентного давления на 20%
         """)
     
-    if not st.session_state.model_fitted:
-        st.warning("Сначала обучите модель")
-        return
-    
-    tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
-    
-    with tab1:
-        # Добавляем объяснение перед созданием сценария
-        with st.expander("🎯 Рекомендации по созданию сценариев", expanded=False):
-            st.markdown("""
+        if not st.session_state.model_fitted:
+            st.warning("Сначала обучите модель")
+            return
+
+        tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
+
+        with tab1:
+            # Добавляем объяснение перед созданием сценария
+            with st.expander("🎯 Рекомендации по созданию сценариев", expanded=False):
+                st.markdown("""
             ### Критерии оценки качества сценария
             
             **Метрики для анализа:**
