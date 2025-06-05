@@ -1421,85 +1421,243 @@ class MMM_App:
                 st.info("Загрузите данные для валидации")
 
     def show_model(self):
-        st.header("⚙️ Конфигурация модели")
+       st.header("⚙️ Конфигурация модели")
+    
+       if st.session_state.data is None:
+        st.warning("Сначала загрузите данные")
+        return
+    
+    data = st.session_state.data
+    
+    # Добавляем общее объяснение MMM
+    with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
+        st.markdown("""
+        ### Теоретическая основа Marketing Mix Modeling
         
-        if st.session_state.data is None:
-            st.warning("Сначала загрузите данные")
-            return
+        **Marketing Mix Model** представляет собой эконометрическую модель, основанную на регрессионном анализе временных рядов. 
+        Математическая формулация базируется на аддитивной декомпозиции продаж:
         
-        data = st.session_state.data
+        **Sales(t) = Base(t) + Σ[Adstock(Media_i) × Saturation(Media_i)] + External_factors(t) + ε(t)**
         
-        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+        **Компоненты модели:**
         
-        with tab1:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("Зависимая переменная")
-                target_options = [col for col in data.columns if any(keyword in col.lower() 
-                                for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
-                target_var = st.selectbox("Выберите целевую метрику:", target_options)
-                
-                st.subheader("Медиа-каналы")
-                media_options = [col for col in data.columns if any(keyword in col.lower() 
-                               for keyword in ['spend', 'cost', 'budget', 'расход'])]
-                selected_media = st.multiselect("Выберите медиа-каналы:", media_options, default=media_options[:5])
-            
-            with col2:
-                st.subheader("Внешние факторы")
-                external_options = [col for col in data.columns if any(keyword in col.lower() 
-                                  for keyword in ['holiday', 'promo', 'season', 'competitor', 'праздник'])]
-                selected_external = st.multiselect("Выберите внешние факторы:", external_options, default=external_options)
-                
-                st.subheader("Контрольные переменные")
-                control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
-                selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
+        1. **Base(t)** — базовая линия продаж, включающая:
+           - Органический рост бренда
+           - Долгосрочные эффекты предыдущих маркетинговых активностей
+           - Влияние неизмеряемых факторов (word-of-mouth, brand equity)
         
-        with tab2:
-            st.subheader("Параметры Adstock (эффект переноса)")
-            
-            adstock_params = {}
-            for media in selected_media:
-                with st.expander(f"Настройки для {media}"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        decay = st.slider(f"Decay rate для {media}", 0.0, 0.9, 0.5, 0.1, key=f"decay_{media}")
-                    with col2:
-                        max_lag = st.slider(f"Max lag для {media}", 1, 12, 6, 1, key=f"lag_{media}")
-                    adstock_params[media] = {'decay': decay, 'max_lag': max_lag}
-            
-            st.subheader("Параметры Saturation (эффект насыщения)")
-            saturation_params = {}
-            for media in selected_media:
-                with st.expander(f"Saturation для {media}"):
-                    alpha = st.slider(f"Alpha для {media}", 0.1, 3.0, 1.0, 0.1, key=f"alpha_{media}")
-                    gamma = st.slider(f"Gamma для {media}", 0.1, 2.0, 0.5, 0.1, key=f"gamma_{media}")
-                    saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
+        2. **Media Effects** — трансформированные медиа-переменные через:
+           - **Adstock**: моделирует эффект переноса рекламного воздействия
+           - **Saturation**: учитывает убывающую предельную отдачу от рекламных инвестиций
         
-        with tab3:
-            st.subheader("Обучение модели")
+        3. **External_factors(t)** — контрольные переменные:
+           - Макроэкономические индикаторы
+           - Конкурентная активность
+           - Сезонные и праздничные эффекты
+        
+        4. **ε(t)** — случайная компонента с предположением нормального распределения
+        
+        **Статистические предположения модели:**
+        - Линейная аддитивность эффектов медиа-каналов
+        - Стационарность остатков модели
+        - Отсутствие автокорреляции в остатках
+        - Гомоскедастичность случайных ошибок
+        """)
+    
+    tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+    
+    with tab1:
+        # Добавляем объяснение переменных модели
+        with st.expander("📖 Типология переменных в MMM", expanded=True):
+            st.markdown("""
+            ### Классификация переменных в Marketing Mix Model
             
-            col1, col2 = st.columns(2)
-            with col1:
-                train_ratio = st.slider("Доля обучающей выборки", 0.6, 0.9, 0.8, 0.05)
-                regularization = st.selectbox("Тип регуляризации", ["Ridge", "Lasso", "ElasticNet"])
+            **1. Зависимая переменная (Target Variable)**
+            - Основная KPI, которую модель должна объяснить и предсказать
+            - Требования: временной ряд с достаточной вариативностью
+            - Примеры: заказы, продажи, выручка, конверсии
+            - Рекомендация: логарифмическое преобразование для стабилизации дисперсии
             
-            with col2:
-                alpha_reg = st.slider("Коэффициент регуляризации", 0.001, 1.0, 0.01, 0.001, 
-                                    help="Меньше = модель более чувствительна к данным, Больше = модель более консервативна")
-                cross_val_folds = st.slider("Число фолдов для кросс-валидации", 3, 10, 5, 1)
-                
-                # Добавляем подсказки
-                st.markdown("""
-                💡 **Подсказки для лучшего качества модели:**
-                - **Коэффициент регуляризации 0.001-0.01** → для активных медиа-каналов
-                - **Коэффициент регуляризации 0.1-1.0** → если модель показывает нереалистичные результаты
-                """)
+            **2. Медиа-каналы (Media Variables)**
+            - Контролируемые маркетинговые активности с известными инвестициями
+            - Характеристики: положительная корреляция с target, наличие лагов
+            - Примеры: затраты на paid search, display, social media, TV, radio
+            - Требования к данным: еженедельная/месячная агрегация, отсутствие пропусков
             
-            st.markdown("---")
-            st.subheader("⚡ Быстрый старт")
-            st.markdown("Для быстрого тестирования используйте настройки по умолчанию и нажмите 'Обучить модель'")
+            **3. Внешние факторы (External Variables)**
+            - Неконтролируемые переменные, влияющие на целевую метрику
+            - Типы: макроэкономические, конкурентные, сезонные
+            - Функция: контроль смещения оценок медиа-эффектов
+            - Примеры: индекс потребительских цен, активность конкурентов, температура
             
+            **4. Контрольные переменные (Control Variables)**
+            - Факторы, не являющиеся медиа, но влияющие на результат
+            - Назначение: снижение необъясненной дисперсии модели
+            - Примеры: цена продукта, ассортиментные изменения, промо-активность
+            """)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Зависимая переменная")
+            target_options = [col for col in data.columns if any(keyword in col.lower() 
+                            for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
+            target_var = st.selectbox("Выберите целевую метрику:", target_options)
+            
+            st.subheader("Медиа-каналы")
+            media_options = [col for col in data.columns if any(keyword in col.lower() 
+                           for keyword in ['spend', 'cost', 'budget', 'расход'])]
+            selected_media = st.multiselect("Выберите медиа-каналы:", media_options, default=media_options[:5])
+        
+        with col2:
+            st.subheader("Внешние факторы")
+            external_options = [col for col in data.columns if any(keyword in col.lower() 
+                              for keyword in ['holiday', 'promo', 'season', 'competitor', 'праздник'])]
+            selected_external = st.multiselect("Выберите внешние факторы:", external_options, default=external_options)
+            
+            st.subheader("Контрольные переменные")
+            control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
+            selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
+    
+    with tab2:
+        # Добавляем объяснение параметров трансформации
+        with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
+            st.markdown("""
+            ### Adstock трансформация (Эффект переноса)
+            
+            **Теоретическое обоснование:**
+            Рекламное воздействие не ограничивается моментом экспозиции. Psychological theory of memory decay 
+            и consumer behavior research показывают, что эффекты рекламы затухают постепенно.
+            
+            **Геометрическая Adstock модель:**
+            ```
+            Adstock(t) = Media(t) + λ × Adstock(t-1)
+            где λ ∈ [0,1] — коэффициент затухания
+            ```
+            
+            **Интерпретация параметров:**
+            - **λ = 0**: отсутствие эффекта переноса (мгновенное затухание)
+            - **λ = 0.3**: 30% эффекта переносится на следующий период
+            - **λ = 0.7**: высокая продолжительность воздействия
+            
+            **Рекомендации по каналам:**
+            - TV/Radio: λ = 0.6-0.8 (высокое остаточное воздействие)
+            - Digital: λ = 0.2-0.5 (быстрое затухание)
+            - Print: λ = 0.4-0.7 (средняя продолжительность)
+            
+            ### Saturation трансформация (Эффект насыщения)
+            
+            **Экономическая теория:**
+            Основана на законе убывающей предельной полезности. Каждая дополнительная единица 
+            рекламных инвестиций приносит меньший прирост результата.
+            
+            **Hill Saturation функция:**
+            ```
+            Saturation = Media^α / (Media^α + γ^α)
+            где α — форма кривой, γ — точка полунасыщения
+            ```
+            
+            **Интерпретация параметров:**
+            - **α < 1**: кривая с медленным ростом в начале
+            - **α = 1**: линейная связь до точки насыщения
+            - **α > 1**: S-образная кривая с пороговым эффектом
+            - **γ**: уровень медиа-активности при достижении 50% максимального эффекта
+            
+            **Практические границы:**
+            - Зрелые каналы: α = 0.6-1.2, γ близко к медианным расходам
+            - Новые каналы: α = 1.5-2.5, γ может быть выше медианных расходов
+            """)
+        
+        st.subheader("Параметры Adstock (эффект переноса)")
+        
+        adstock_params = {}
+        for media in selected_media:
+            with st.expander(f"Настройки для {media}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    decay = st.slider(f"Decay rate для {media}", 0.0, 0.9, 0.5, 0.1, key=f"decay_{media}",
+                                    help="Доля эффекта, переносимого на следующий период")
+                with col2:
+                    max_lag = st.slider(f"Max lag для {media}", 1, 12, 6, 1, key=f"lag_{media}",
+                                      help="Максимальная продолжительность эффекта в периодах")
+                adstock_params[media] = {'decay': decay, 'max_lag': max_lag}
+        
+        st.subheader("Параметры Saturation (эффект насыщения)")
+        saturation_params = {}
+        for media in selected_media:
+            with st.expander(f"Saturation для {media}"):
+                alpha = st.slider(f"Alpha для {media}", 0.1, 3.0, 1.0, 0.1, key=f"alpha_{media}",
+                                help="Форма кривой насыщения: <1 = медленный рост, >1 = S-кривая")
+                gamma = st.slider(f"Gamma для {media}", 0.1, 2.0, 0.5, 0.1, key=f"gamma_{media}",
+                                help="Точка полунасыщения относительно средних расходов")
+                saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
+    
+    with tab3:
+        # Добавляем объяснение обучения модели
+        with st.expander("📊 Методология обучения и валидации модели", expanded=True):
+            st.markdown("""
+            ### Стратегии машинного обучения в MMM
+            
+            **1. Регуляризация (Regularization)**
+            
+            **Ridge регрессия (L2):**
+            - Минимизирует: ||y - Xβ||² + α||β||²
+            - Эффект: сжимает коэффициенты к нулю, предотвращает переобучение
+            - Подходит для: ситуаций с мультиколлинеарностью между медиа-каналами
+            
+            **Lasso регрессия (L1):**
+            - Минимизирует: ||y - Xβ||² + α|β|
+            - Эффект: обнуляет незначимые коэффициенты, выполняет отбор признаков
+            - Подходит для: исключения неэффективных медиа-каналов
+            
+            **Elastic Net:**
+            - Комбинирует L1 и L2 регуляризацию
+            - Подходит для: сбалансированного подхода к отбору и стабилизации
+            
+            **2. Временное разделение данных**
+            
+            **Принцип:**
+            Обучающая выборка всегда предшествует тестовой по времени для избежания data leakage.
+            
+            **Рекомендации:**
+            - Минимум 70% данных для обучения
+            - Тестовая выборка должна покрывать различные сезонные периоды
+            - При наличии <52 недель данных: использовать cross-validation
+            
+            **3. Метрики качества модели**
+            
+            **R² (Coefficient of Determination):**
+            - Интерпретация: доля объясненной дисперсии
+            - Хорошие значения: >0.7 для еженедельных данных, >0.8 для месячных
+            
+            **MAPE (Mean Absolute Percentage Error):**
+            - Бизнес-интерпретация: средняя процентная ошибка прогноза
+            - Приемлемые значения: <15% для операционного планирования
+            
+            **4. Диагностика остатков**
+            
+            **Критерии валидности модели:**
+            - Нормальность остатков (Shapiro-Wilk test)
+            - Отсутствие автокорреляции (Durbin-Watson test)
+            - Гомоскедастичность (Breusch-Pagan test)
+            - Отсутствие структурных сдвигов (Chow test)
+            """)
+        
+        st.subheader("Обучение модели")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            train_ratio = st.slider("Доля обучающей выборки", 0.6, 0.9, 0.8, 0.05,
+                                  help="Временное разделение: обучение всегда предшествует тесту")
+            regularization = st.selectbox("Тип регуляризации", ["Ridge", "Lasso", "ElasticNet"],
+                                        help="Ridge: стабилизация, Lasso: отбор признаков, ElasticNet: баланс")
+        
+        with col2:
+            alpha_reg = st.slider("Коэффициент регуляризации", 0.001, 1.0, 0.01, 0.001,
+                                help="Контролирует силу регуляризации: больше = консервативнее")
+            cross_val_folds = st.slider("Число фолдов для кросс-валидации", 3, 10, 5, 1,
+                                      help="Используется для подбора гиперпараметров")
+                         
             if st.button("🚀 Обучить модель", type="primary"):
                 with st.spinner("Обучение модели..."):
                     try:
@@ -1760,36 +1918,63 @@ class MMM_App:
                 st.error(f"Ошибка при расчете декомпозиции: {str(e)}")
                 st.info("💡 **Решение**: Попробуйте переобучить модель с другими параметрами в разделе 'Модель'")
         
-        with tab3:
-            st.subheader("ROAS по каналам")
+       with tab3:  # ROAS анализ
+        # Добавляем объяснение ROAS
+        with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
+            st.markdown("""
+            ### Return on Advertising Spend (ROAS) — Научное определение
             
-            try:
-                # Расчет ROAS
-                if hasattr(st.session_state, 'data') and st.session_state.data is not None:
-                    roas_data = model.calculate_roas(st.session_state.data, st.session_state.selected_media)
-                    
-                    if not roas_data.empty:
-                        # Visualization
-                        fig = self.visualizer.create_roas_comparison(roas_data)
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Таблица ROAS
-                        st.subheader("Детализация ROAS")
-                        st.dataframe(roas_data, use_container_width=True)
-                    else:
-                        st.warning("Не удалось рассчитать ROAS. Проверьте данные.")
-                else:
-                    st.warning("Данные для расчета ROAS недоступны.")
-                    
-            except Exception as e:
-                st.error(f"Ошибка при расчете ROAS: {str(e)}")
-                # Показываем демо ROAS
-                demo_roas = pd.DataFrame({
-                    'Channel': ['Facebook', 'Google', 'TikTok'],
-                    'ROAS': [2.1, 2.8, 1.5]
-                })
-                fig = self.visualizer.create_roas_comparison(demo_roas)
-                st.plotly_chart(fig, use_container_width=True)
+            **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение 
+            инкрементальной выручки к рекламным затратам:
+            
+            **ROAS = Incremental Revenue / Advertising Spend**
+            
+            **Математическая интерпретация:**
+            - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
+            - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
+            - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
+            
+            **Методологические особенности в MMM:**
+            
+            1. **Инкрементальность vs. Корреляция**
+               - MMM измеряет причинно-следственную связь через контрольные переменные
+               - Традиционная аналитика показывает корреляционную связь
+               - Инкрементальный ROAS всегда ниже корреляционного
+            
+            2. **Временные эффекты**
+               - Краткосрочный ROAS: эффект в течение 1-4 недель
+               - Долгосрочный ROAS: включает adstock эффекты (до 12-52 недель)
+               - MMM рассчитывает полный (долгосрочный) ROAS
+            
+            **Бенчмарки по индустриям:**
+            
+            **E-commerce:**
+            - Excellent: ROAS > 4.0
+            - Good: ROAS 2.5-4.0  
+            - Acceptable: ROAS 1.5-2.5
+            - Poor: ROAS < 1.5
+            
+            **FMCG:**
+            - Excellent: ROAS > 3.0
+            - Good: ROAS 2.0-3.0
+            - Acceptable: ROAS 1.2-2.0
+            - Poor: ROAS < 1.2
+            
+            **B2B Services:**
+            - Excellent: ROAS > 5.0
+            - Good: ROAS 3.0-5.0
+            - Acceptable: ROAS 2.0-3.0
+            - Poor: ROAS < 2.0
+            
+            **Marginal ROAS:**
+            Показывает эффективность последнего вложенного рубля. Критически важен для оптимизации бюджета.
+            Правило: перераспределять бюджет от каналов с низким Marginal ROAS к каналам с высоким.
+            
+            **Ограничения метрики:**
+            - Не учитывает Customer Lifetime Value
+            - Игнорирует брендинговые эффекты
+            - Может недооценивать upper-funnel активности
+            """)
         
         with tab4:
             st.subheader("Кривые насыщения")
@@ -2099,48 +2284,270 @@ class MMM_App:
 
     def show_scenarios(self):
         st.header("🔮 Сценарный анализ")
+    
+    # Добавляем общее объяснение сценарного анализа
+    with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
+        st.markdown("""
+        ### Сценарное планирование в Marketing Mix Modeling
         
-        if not st.session_state.model_fitted:
-            st.warning("Сначала обучите модель")
-            return
+        **Определение:**
+        Сценарный анализ — систематический метод оценки потенциальных последствий различных 
+        стратегических решений в области медиа-инвестиций при неопределенных внешних условиях.
         
-        tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
+        **Теоретические основы:**
         
-        with tab1:
-            st.subheader("Создание нового сценария")
+        1. **Детерминистическое моделирование**
+           - Модель предполагает фиксированные параметры медиа-трансформаций
+           - Учитывает нелинейные эффекты (adstock, saturation)
+           - Включает влияние внешних факторов
+        
+        2. **Сравнительная статика**
+           - Анализ изменения равновесных состояний при изменении параметров
+           - Ceteris paribus принцип: все остальное остается неизменным
+           - Позволяет изолировать эффекты конкретных решений
+        
+        **Типология сценариев:**
+        
+        **1. Оптимистичный сценарий**
+        - Благоприятная сезонность (seasonality > 1.0)
+        - Низкая конкурентная активность (competition < 1.0)
+        - Применение: планирование максимальных результатов
+        
+        **2. Пессимистичный сценарий**
+        - Неблагоприятная сезонность (seasonality < 1.0)
+        - Высокая конкурентная активность (competition > 1.0)
+        - Применение: оценка рисков и планирование contingency
+        
+        **3. Базовый сценарий**
+        - Нейтральные внешние условия (факторы = 1.0)
+        - Применение: стандартное планирование
+        
+        **Интерпретация факторов:**
+        
+        **Сезонный фактор:**
+        - 1.5 = +50% к базовому спросу (высокий сезон)
+        - 1.0 = нейтральный период
+        - 0.7 = -30% к базовому спросу (низкий сезон)
+        
+        **Фактор конкуренции:**
+        - 1.3 = увеличение конкурентного давления на 30%
+        - 1.0 = стабильная конкурентная среда
+        - 0.8 = снижение конкурентного давления на 20%
+        """)
+    
+    if not st.session_state.model_fitted:
+        st.warning("Сначала обучите модель")
+        return
+    
+    tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
+    
+    with tab1:
+        # Добавляем объяснение перед созданием сценария
+        with st.expander("🎯 Рекомендации по созданию сценариев", expanded=False):
+            st.markdown("""
+            ### Критерии оценки качества сценария
             
-            scenario_name = st.text_input("Название сценария", "Сценарий 1")
+            **Метрики для анализа:**
             
-            col1, col2 = st.columns(2)
+            **ROAS (Return on Ad Spend):**
+            - **Отличный результат**: ROAS ≥ 3.0
+            - **Хороший результат**: ROAS 2.0-3.0
+            - **Приемлемый результат**: ROAS 1.5-2.0
+            - **Неудовлетворительный**: ROAS < 1.5
             
-            with col1:
-                st.subheader("Настройки каналов")
-                scenario_budget = {}
+            **Прогнозируемые продажи:**
+            - Сравнивайте с текущим уровнем и историческими данными
+            - Учитывайте сезонные колебания
+            - Оценивайте реалистичность с точки зрения операционных возможностей
+            
+            **Общий бюджет:**
+            - Должен соответствовать финансовым возможностям
+            - Учитывайте ограничения по cash flow
+            - Сравнивайте с текущими расходами на маркетинг
+            
+            **Рекомендации по построению сценариев:**
+            
+            1. **Консервативный подход**: изменения бюджета ±20% от текущего уровня
+            2. **Агрессивный рост**: увеличение бюджета на 50-100%
+            3. **Оптимизация**: перераспределение без изменения общего бюджета
+            4. **Кризисный**: снижение бюджета на 30-50%
+            """)
+        
+        st.subheader("Создание нового сценария")
+        
+        scenario_name = st.text_input("Название сценария", "Сценарий 1")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Настройки каналов")
+            scenario_budget = {}
+            
+            # Показываем текущие расходы для сравнения
+            st.markdown("**Текущие среднемесячные расходы:**")
+            current_totals = {}
+            for channel in st.session_state.selected_media:
+                current_value = st.session_state.data[channel].mean()
+                current_totals[channel] = current_value
+                st.caption(f"{channel}: {current_value:,.0f} руб")
+            
+            total_current = sum(current_totals.values())
+            st.caption(f"**Общий текущий бюджет: {total_current:,.0f} руб**")
+            
+            st.markdown("**Новое распределение:**")
+            for channel in st.session_state.selected_media:
+                current_value = current_totals[channel]
+                scenario_budget[channel] = st.number_input(
+                    f"Бюджет {channel}",
+                    min_value=0,
+                    value=int(current_value),
+                    step=1000,
+                    key=f"scenario_{channel}",
+                    help=f"Текущий уровень: {current_value:,.0f} руб"
+                )
+        
+        with col2:
+            st.subheader("Внешние факторы")
+            
+            # Добавляем пояснения к внешним факторам
+            st.markdown("""
+            **Интерпретация внешних факторов:**
+            - **1.0** = нормальные условия
+            - **>1.0** = благоприятные условия  
+            - **<1.0** = неблагоприятные условия
+            """)
+            
+            seasonality_factor = st.slider(
+                "Сезонный фактор", 0.5, 2.0, 1.0, 0.1,
+                help="1.5 = высокий сезон (+50%), 0.7 = низкий сезон (-30%)"
+            )
+            competition_factor = st.slider(
+                "Фактор конкуренции", 0.5, 2.0, 1.0, 0.1,
+                help="1.3 = усиление конкуренции (-30% эффективности), 0.8 = ослабление (+20%)"
+            )
+            
+            # Прогноз до расчета
+            new_total = sum(scenario_budget.values())
+            budget_change = ((new_total - total_current) / total_current * 100) if total_current > 0 else 0
+            
+            st.markdown("### Предварительная оценка")
+            st.metric("Изменение бюджета", f"{budget_change:+.1f}%")
+            
+            if budget_change > 50:
+                st.warning("Существенное увеличение бюджета. Убедитесь в операционной готовности.")
+            elif budget_change > 20:
+                st.info("Умеренное увеличение бюджета. Хорошая стратегия роста.")
+            elif budget_change > -20:
+                st.success("Незначительные изменения. Фокус на оптимизации распределения.")
+            else:
+                st.error("Значительное сокращение бюджета. Ожидается снижение результатов.")
+            
+            # Прогноз результатов сценария
+            if st.button("📊 Рассчитать прогноз"):
+                predicted_results = st.session_state.model.predict_scenario(
+                    scenario_budget, seasonality_factor, competition_factor
+                )
                 
-                for channel in st.session_state.selected_media:
-                    current_value = st.session_state.data[channel].mean()
-                    scenario_budget[channel] = st.number_input(
-                        f"Бюджет {channel}",
-                        min_value=0,
-                        value=int(current_value),
-                        step=1000,
-                        key=f"scenario_{channel}"
-                    )
-            
-            with col2:
-                st.subheader("Внешние факторы")
-                seasonality_factor = st.slider("Сезонный фактор", 0.5, 2.0, 1.0, 0.1)
-                competition_factor = st.slider("Фактор конкуренции", 0.5, 2.0, 1.0, 0.1)
+                st.markdown("### Результаты прогноза")
                 
-                # Прогноз результатов сценария
-                if st.button("📊 Рассчитать прогноз"):
-                    predicted_results = st.session_state.model.predict_scenario(
-                        scenario_budget, seasonality_factor, competition_factor
-                    )
-                    
-                    st.metric("Прогнозируемые продажи", f"{predicted_results['sales']:,.0f}")
-                    st.metric("Прогнозируемый ROAS", f"{predicted_results['roas']:.2f}")
-                    st.metric("Общий бюджет", f"{sum(scenario_budget.values()):,.0f}")
+                # Детальный анализ результатов
+                sales_result = predicted_results['sales']
+                roas_result = predicted_results['roas']
+                total_spend = sum(scenario_budget.values())
+                
+                col_a, col_b, col_c = st.columns(3)
+                
+                with col_a:
+                    st.metric("Прогнозируемые продажи", f"{sales_result:,.0f}")
+                
+                with col_b:
+                    # Цветовая индикация ROAS
+                    if roas_result >= 3.0:
+                        st.success(f"**ROAS: {roas_result:.2f}** (Отлично)")
+                    elif roas_result >= 2.0:
+                        st.info(f"**ROAS: {roas_result:.2f}** (Хорошо)")
+                    elif roas_result >= 1.5:
+                        st.warning(f"**ROAS: {roas_result:.2f}** (Приемлемо)")
+                    else:
+                        st.error(f"**ROAS: {roas_result:.2f}** (Неудовлетворительно)")
+                
+                with col_c:
+                    st.metric("Общий бюджет", f"{total_spend:,.0f}")
+                
+                # Развернутая интерпретация
+                st.markdown("### Интерпретация результатов")
+                
+                # Анализ ROAS
+                if roas_result >= 3.0:
+                    st.success("""
+                    **Отличные результаты**: ROAS выше 3.0 указывает на высокую эффективность 
+                    медиа-инвестиций. Рекомендуется реализация данного сценария.
+                    """)
+                elif roas_result >= 2.0:
+                    st.info("""
+                    **Хорошие результаты**: ROAS в диапазоне 2.0-3.0 демонстрирует приемлемую 
+                    эффективность. Возможны дополнительные оптимизации распределения.
+                    """)
+                elif roas_result >= 1.5:
+                    st.warning("""
+                    **Приемлемые результаты**: ROAS 1.5-2.0 находится на нижней границе 
+                    эффективности. Требуется анализ альтернативных стратегий.
+                    """)
+                else:
+                    st.error("""
+                    **Неудовлетворительные результаты**: ROAS ниже 1.5 указывает на 
+                    неэффективность инвестиций. Необходим пересмотр распределения бюджета.
+                    """)
+                
+                # Анализ продаж
+                # Для примера сравниваем с "типичным" уровнем
+                baseline_sales = st.session_state.data[st.session_state.target_var].mean() if hasattr(st.session_state, 'target_var') else 50000
+                sales_change = ((sales_result - baseline_sales) / baseline_sales * 100) if baseline_sales > 0 else 0
+                
+                if sales_change > 20:
+                    st.success(f"Прогнозируемый рост продаж: +{sales_change:.1f}%. Сильная стратегия роста.")
+                elif sales_change > 5:
+                    st.info(f"Прогнозируемый рост продаж: +{sales_change:.1f}%. Умеренный рост.")
+                elif sales_change > -5:
+                    st.warning(f"Изменение продаж: {sales_change:+.1f}%. Стабильные результаты.")
+                else:
+                    st.error(f"Прогнозируемое снижение продаж: {sales_change:.1f}%. Рискованная стратегия.")
+    
+    with tab2:
+        # Добавляем объяснение сравнения сценариев
+        with st.expander("📈 Методология сравнения сценариев", expanded=True):
+            st.markdown("""
+            ### Принципы сравнительного анализа стратегий
+            
+            **Предустановленные стратегии:**
+            
+            **1. Текущий сценарий (Current)**
+            - Базовая линия для сравнения
+            - Основан на исторических средних расходах
+            - Показывает результаты при сохранении status quo
+            
+            **2. Digital Focus**
+            - 80% бюджета на цифровые каналы, 20% на офлайн
+            - Стратегия для повышения измеримости и таргетинга
+            - Подходит для D2C брендов и e-commerce
+            
+            **3. Balanced**
+            - Равномерное распределение между всеми каналами
+            - Стратегия диверсификации рисков
+            - Подходит для тестирования новых каналов
+            
+            **4. Performance**
+            - Концентрация на каналах с исторически высоким ROAS
+            - 70% бюджета на Google + Facebook, 30% на остальные
+            - Стратегия максимизации краткосрочной эффективности
+            
+            **Критерии выбора оптимальной стратегии:**
+            
+            1. **Максимальные продажи**: выбор сценария с наибольшим объемом продаж
+            2. **Максимальный ROAS**: приоритет эффективности инвестиций
+            3. **Минимальный риск**: выбор наиболее стабильного сценария
+            4. **Бюджетные ограничения**: соответствие финансовым возможностям
+            """)
         
         with tab2:
             st.subheader("Сравнение предустановленных сценариев")
@@ -2208,7 +2615,83 @@ class MMM_App:
             
             fig.update_layout(title="Сравнение сценариев", height=400)
             st.plotly_chart(fig, use_container_width=True)
-
+# Добавляем анализ после таблицы сравнения
+        if 'scenario_results' in locals():
+            st.markdown("### Рекомендации по выбору стратегии")
+            
+            # Находим лучший сценарий по каждому критерию
+            best_sales = max(scenario_results.keys(), key=lambda x: scenario_results[x]['sales'])
+            best_roas = max(scenario_results.keys(), key=lambda x: scenario_results[x]['roas'])
+            most_efficient = min(scenario_results.keys(), key=lambda x: scenario_results[x]['total_spend'])
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.success(f"""
+                **Максимальные продажи**: {best_sales}
+                
+                Продажи: {scenario_results[best_sales]['sales']:,.0f}
+                
+                Рекомендуется для: агрессивного роста объемов
+                """)
+            
+            with col2:
+                st.info(f"""
+                **Максимальный ROAS**: {best_roas}
+                
+                ROAS: {scenario_results[best_roas]['roas']:.2f}
+                
+                Рекомендуется для: оптимизации эффективности
+                """)
+            
+            with col3:
+                st.warning(f"""
+                **Наименьший бюджет**: {most_efficient}
+                
+                Бюджет: {scenario_results[most_efficient]['total_spend']:,.0f}
+                
+                Рекомендуется для: ограниченных ресурсов
+                """)
+            
+            # Общие рекомендации
+            st.markdown("### Стратегические рекомендации")
+            
+            # Сравнение с текущим сценарием
+            current_results = scenario_results.get('Текущий', scenario_results.get('Current'))
+            if current_results:
+                for name, results in scenario_results.items():
+                    if name not in ['Текущий', 'Current']:
+                        sales_improvement = ((results['sales'] - current_results['sales']) / current_results['sales'] * 100)
+                        roas_improvement = ((results['roas'] - current_results['roas']) / current_results['roas'] * 100)
+                        
+                        if sales_improvement > 10 and roas_improvement > 5:
+                            st.success(f"""
+                            **{name}**: Превосходит текущую стратегию по всем показателям
+                            - Рост продаж: +{sales_improvement:.1f}%
+                            - Улучшение ROAS: +{roas_improvement:.1f}%
+                            - **Рекомендация**: Приоритетная стратегия для внедрения
+                            """)
+                        elif sales_improvement > 5:
+                            st.info(f"""
+                            **{name}**: Увеличивает продажи при сопоставимой эффективности
+                            - Рост продаж: +{sales_improvement:.1f}%
+                            - Изменение ROAS: {roas_improvement:+.1f}%
+                            - **Рекомендация**: Подходит для фазы роста
+                            """)
+                        elif roas_improvement > 10:
+                            st.info(f"""
+                            **{name}**: Повышает эффективность инвестиций
+                            - Изменение продаж: {sales_improvement:+.1f}%
+                            - Улучшение ROAS: +{roas_improvement:.1f}%
+                            - **Рекомендация**: Подходит для оптимизации
+                            """)
+                        else:
+                            st.warning(f"""
+                            **{name}**: Незначительные улучшения относительно текущей стратегии
+                            - Изменение продаж: {sales_improvement:+.1f}%
+                            - Изменение ROAS: {roas_improvement:+.1f}%
+                            - **Рекомендация**: Второстепенная альтернатива
+                            """)
 if __name__ == "__main__":
     app = MMM_App()
     app.run()
