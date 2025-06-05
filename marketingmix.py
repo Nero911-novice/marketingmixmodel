@@ -1421,17 +1421,17 @@ class MMM_App:
                 st.info("Загрузите данные для валидации")
 
     def show_model(self):
-       st.header("⚙️ Конфигурация модели")
-    
-       if st.session_state.data is None:
-        st.warning("Сначала загрузите данные")
-        return
-    
-    data = st.session_state.data
-    
-    # Добавляем общее объяснение MMM
-    with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
-        st.markdown("""
+        st.header("⚙️ Конфигурация модели")
+
+        if st.session_state.data is None:
+            st.warning("Сначала загрузите данные")
+            return
+
+        data = st.session_state.data
+
+        # Добавляем общее объяснение MMM
+        with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
+            st.markdown("""
         ### Теоретическая основа Marketing Mix Modeling
         
         **Marketing Mix Model** представляет собой эконометрическую модель, основанную на регрессионном анализе временных рядов. 
@@ -1464,12 +1464,12 @@ class MMM_App:
         - Гомоскедастичность случайных ошибок
         """)
     
-    tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
-    
-    with tab1:
-        # Добавляем объяснение переменных модели
-        with st.expander("📖 Типология переменных в MMM", expanded=True):
-            st.markdown("""
+        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+
+        with tab1:
+            # Добавляем объяснение переменных модели
+            with st.expander("📖 Типология переменных в MMM", expanded=True):
+                st.markdown("""
             ### Классификация переменных в Marketing Mix Model
             
             **1. Зависимая переменная (Target Variable)**
@@ -1519,10 +1519,10 @@ class MMM_App:
             control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
             selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
     
-    with tab2:
-        # Добавляем объяснение параметров трансформации
-        with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
-            st.markdown("""
+        with tab2:
+            # Добавляем объяснение параметров трансформации
+            with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
+                st.markdown("""
             ### Adstock трансформация (Эффект переноса)
             
             **Теоретическое обоснование:**
@@ -1592,10 +1592,10 @@ class MMM_App:
                                 help="Точка полунасыщения относительно средних расходов")
                 saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
     
-    with tab3:
-        # Добавляем объяснение обучения модели
-        with st.expander("📊 Методология обучения и валидации модели", expanded=True):
-            st.markdown("""
+        with tab3:
+            # Добавляем объяснение обучения модели
+            with st.expander("📊 Методология обучения и валидации модели", expanded=True):
+                st.markdown("""
             ### Стратегии машинного обучения в MMM
             
             **1. Регуляризация (Regularization)**
@@ -1918,63 +1918,59 @@ class MMM_App:
                 st.error(f"Ошибка при расчете декомпозиции: {str(e)}")
                 st.info("💡 **Решение**: Попробуйте переобучить модель с другими параметрами в разделе 'Модель'")
         
-       with tab3:  # ROAS анализ
-        # Добавляем объяснение ROAS
-        with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
-            st.markdown("""
-            ### Return on Advertising Spend (ROAS) — Научное определение
-            
-            **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение 
-            инкрементальной выручки к рекламным затратам:
-            
-            **ROAS = Incremental Revenue / Advertising Spend**
-            
-            **Математическая интерпретация:**
-            - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
-            - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
-            - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
-            
-            **Методологические особенности в MMM:**
-            
-            1. **Инкрементальность vs. Корреляция**
-               - MMM измеряет причинно-следственную связь через контрольные переменные
-               - Традиционная аналитика показывает корреляционную связь
-               - Инкрементальный ROAS всегда ниже корреляционного
-            
-            2. **Временные эффекты**
-               - Краткосрочный ROAS: эффект в течение 1-4 недель
-               - Долгосрочный ROAS: включает adstock эффекты (до 12-52 недель)
-               - MMM рассчитывает полный (долгосрочный) ROAS
-            
-            **Бенчмарки по индустриям:**
-            
-            **E-commerce:**
-            - Excellent: ROAS > 4.0
-            - Good: ROAS 2.5-4.0  
-            - Acceptable: ROAS 1.5-2.5
-            - Poor: ROAS < 1.5
-            
-            **FMCG:**
-            - Excellent: ROAS > 3.0
-            - Good: ROAS 2.0-3.0
-            - Acceptable: ROAS 1.2-2.0
-            - Poor: ROAS < 1.2
-            
-            **B2B Services:**
-            - Excellent: ROAS > 5.0
-            - Good: ROAS 3.0-5.0
-            - Acceptable: ROAS 2.0-3.0
-            - Poor: ROAS < 2.0
-            
-            **Marginal ROAS:**
-            Показывает эффективность последнего вложенного рубля. Критически важен для оптимизации бюджета.
-            Правило: перераспределять бюджет от каналов с низким Marginal ROAS к каналам с высоким.
-            
-            **Ограничения метрики:**
-            - Не учитывает Customer Lifetime Value
-            - Игнорирует брендинговые эффекты
-            - Может недооценивать upper-funnel активности
-            """)
+        with tab3:  # ROAS анализ
+            # блок восстановлен после конфликта слияния
+            st.subheader("ROAS по каналам")
+
+            # Краткое объяснение метрики
+            with st.expander("📚 Что такое ROAS и как его интерпретировать", expanded=True):
+                st.markdown("""
+                ### Return on Advertising Spend (ROAS) — Научное определение
+
+                **ROAS** — ключевая метрика эффективности рекламных инвестиций, определяемая как отношение инкрементальной выручки к рекламным затратам:
+
+                **ROAS = Incremental Revenue / Advertising Spend**
+
+                **Математическая интерпретация:**
+                - ROAS = 3.0 означает, что каждый рубль рекламы генерирует 3 рубля дополнительной выручки
+                - ROAS = 1.0 — точка безубыточности (реклама окупает себя)
+                - ROAS < 1.0 — убыточные инвестиции с позиции краткосрочной окупаемости
+
+                **Методологические особенности в MMM:**
+                1. **Инкрементальность vs. Корреляция**
+                   - MMM измеряет причинно-следственную связь через контрольные переменные
+                   - Традиционная аналитика показывает корреляционную связь
+                   - Инкрементальный ROAS всегда ниже корреляционного
+
+                2. **Временные эффекты**
+                   - Краткосрочный ROAS: эффект в течение 1-4 недель
+                   - Долгосрочный ROAS: включает adstock эффекты (до 12-52 недель)
+                   - MMM рассчитывает полный (долгосрочный) ROAS
+                """)
+
+            try:
+                if hasattr(st.session_state, 'data') and st.session_state.data is not None:
+                    roas_data = model.calculate_roas(st.session_state.data, st.session_state.selected_media)
+
+                    if not roas_data.empty:
+                        fig = self.visualizer.create_roas_comparison(roas_data)
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        st.subheader("Детализация ROAS")
+                        st.dataframe(roas_data, use_container_width=True)
+                    else:
+                        st.warning("Не удалось рассчитать ROAS. Проверьте данные.")
+                else:
+                    st.warning("Данные для расчета ROAS недоступны.")
+
+            except Exception as e:
+                st.error(f"Ошибка при расчете ROAS: {str(e)}")
+                demo_roas = pd.DataFrame({
+                    'Channel': ['Facebook', 'Google', 'TikTok'],
+                    'ROAS': [2.1, 2.8, 1.5]
+                })
+                fig = self.visualizer.create_roas_comparison(demo_roas)
+                st.plotly_chart(fig, use_container_width=True)
         
         with tab4:
             st.subheader("Кривые насыщения")
@@ -2277,17 +2273,26 @@ class MMM_App:
                     
                     with col2:
                         st.subheader("Сравнение распределений")
-                        
+
+                        # Определяем текущее распределение по каналам
+                        current_allocation = {
+                            ch: st.session_state.data[ch].mean()
+                            for ch in st.session_state.selected_media
+                        }
+
                         # Сравнительная диаграмма
-                        fig = self.visualizer.create_optimization_results(current_spend, optimal_allocation['allocation'])
+                        fig = self.visualizer.create_optimization_results(
+                            current_allocation,
+                            optimal_allocation['allocation']
+                        )
                         st.plotly_chart(fig, use_container_width=True)
 
     def show_scenarios(self):
         st.header("🔮 Сценарный анализ")
-    
-    # Добавляем общее объяснение сценарного анализа
-    with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
-        st.markdown("""
+
+        # Добавляем общее объяснение сценарного анализа
+        with st.expander("📊 Методология сценарного анализа в маркетинге", expanded=True):
+            st.markdown("""
         ### Сценарное планирование в Marketing Mix Modeling
         
         **Определение:**
@@ -2335,16 +2340,16 @@ class MMM_App:
         - 0.8 = снижение конкурентного давления на 20%
         """)
     
-    if not st.session_state.model_fitted:
-        st.warning("Сначала обучите модель")
-        return
-    
-    tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
-    
-    with tab1:
-        # Добавляем объяснение перед созданием сценария
-        with st.expander("🎯 Рекомендации по созданию сценариев", expanded=False):
-            st.markdown("""
+        if not st.session_state.model_fitted:
+            st.warning("Сначала обучите модель")
+            return
+
+        tab1, tab2 = st.tabs(["Создание сценариев", "Сравнение сценариев"])
+
+        with tab1:
+            # Добавляем объяснение перед созданием сценария
+            with st.expander("🎯 Рекомендации по созданию сценариев", expanded=False):
+                st.markdown("""
             ### Критерии оценки качества сценария
             
             **Метрики для анализа:**
@@ -2513,43 +2518,42 @@ class MMM_App:
                 else:
                     st.error(f"Прогнозируемое снижение продаж: {sales_change:.1f}%. Рискованная стратегия.")
     
-    with tab2:
-        # Добавляем объяснение сравнения сценариев
-        with st.expander("📈 Методология сравнения сценариев", expanded=True):
-            st.markdown("""
+        with tab2:
+            # Добавляем объяснение сравнения сценариев
+            with st.expander("📈 Методология сравнения сценариев", expanded=True):
+                st.markdown("""
             ### Принципы сравнительного анализа стратегий
-            
+
             **Предустановленные стратегии:**
-            
+
             **1. Текущий сценарий (Current)**
             - Базовая линия для сравнения
             - Основан на исторических средних расходах
             - Показывает результаты при сохранении status quo
-            
+
             **2. Digital Focus**
             - 80% бюджета на цифровые каналы, 20% на офлайн
             - Стратегия для повышения измеримости и таргетинга
             - Подходит для D2C брендов и e-commerce
-            
+
             **3. Balanced**
             - Равномерное распределение между всеми каналами
             - Стратегия диверсификации рисков
             - Подходит для тестирования новых каналов
-            
+
             **4. Performance**
             - Концентрация на каналах с исторически высоким ROAS
             - 70% бюджета на Google + Facebook, 30% на остальные
             - Стратегия максимизации краткосрочной эффективности
-            
+
             **Критерии выбора оптимальной стратегии:**
-            
+
             1. **Максимальные продажи**: выбор сценария с наибольшим объемом продаж
             2. **Максимальный ROAS**: приоритет эффективности инвестиций
             3. **Минимальный риск**: выбор наиболее стабильного сценария
             4. **Бюджетные ограничения**: соответствие финансовым возможностям
             """)
-        
-        with tab2:
+
             st.subheader("Сравнение предустановленных сценариев")
             
             # Предустановленные сценарии
@@ -2615,78 +2619,78 @@ class MMM_App:
             
             fig.update_layout(title="Сравнение сценариев", height=400)
             st.plotly_chart(fig, use_container_width=True)
-# Добавляем анализ после таблицы сравнения
-        if 'scenario_results' in locals():
-            st.markdown("### Рекомендации по выбору стратегии")
+            # Добавляем анализ после таблицы сравнения
+            if 'scenario_results' in locals():
+                st.markdown("### Рекомендации по выбору стратегии")
             
-            # Находим лучший сценарий по каждому критерию
-            best_sales = max(scenario_results.keys(), key=lambda x: scenario_results[x]['sales'])
-            best_roas = max(scenario_results.keys(), key=lambda x: scenario_results[x]['roas'])
-            most_efficient = min(scenario_results.keys(), key=lambda x: scenario_results[x]['total_spend'])
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.success(f"""
+                # Находим лучший сценарий по каждому критерию
+                best_sales = max(scenario_results.keys(), key=lambda x: scenario_results[x]['sales'])
+                best_roas = max(scenario_results.keys(), key=lambda x: scenario_results[x]['roas'])
+                most_efficient = min(scenario_results.keys(), key=lambda x: scenario_results[x]['total_spend'])
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    st.success(f"""
                 **Максимальные продажи**: {best_sales}
-                
+
                 Продажи: {scenario_results[best_sales]['sales']:,.0f}
-                
+
                 Рекомендуется для: агрессивного роста объемов
                 """)
-            
-            with col2:
-                st.info(f"""
+
+                with col2:
+                    st.info(f"""
                 **Максимальный ROAS**: {best_roas}
-                
+
                 ROAS: {scenario_results[best_roas]['roas']:.2f}
-                
+
                 Рекомендуется для: оптимизации эффективности
                 """)
-            
-            with col3:
-                st.warning(f"""
+
+                with col3:
+                    st.warning(f"""
                 **Наименьший бюджет**: {most_efficient}
-                
+
                 Бюджет: {scenario_results[most_efficient]['total_spend']:,.0f}
-                
+
                 Рекомендуется для: ограниченных ресурсов
                 """)
+
+                # Общие рекомендации
+                st.markdown("### Стратегические рекомендации")
             
-            # Общие рекомендации
-            st.markdown("### Стратегические рекомендации")
-            
-            # Сравнение с текущим сценарием
-            current_results = scenario_results.get('Текущий', scenario_results.get('Current'))
-            if current_results:
-                for name, results in scenario_results.items():
-                    if name not in ['Текущий', 'Current']:
-                        sales_improvement = ((results['sales'] - current_results['sales']) / current_results['sales'] * 100)
-                        roas_improvement = ((results['roas'] - current_results['roas']) / current_results['roas'] * 100)
+                # Сравнение с текущим сценарием
+                current_results = scenario_results.get('Текущий', scenario_results.get('Current'))
+                if current_results:
+                    for name, results in scenario_results.items():
+                        if name not in ['Текущий', 'Current']:
+                            sales_improvement = ((results['sales'] - current_results['sales']) / current_results['sales'] * 100)
+                            roas_improvement = ((results['roas'] - current_results['roas']) / current_results['roas'] * 100)
                         
-                        if sales_improvement > 10 and roas_improvement > 5:
-                            st.success(f"""
+                            if sales_improvement > 10 and roas_improvement > 5:
+                                st.success(f"""
                             **{name}**: Превосходит текущую стратегию по всем показателям
                             - Рост продаж: +{sales_improvement:.1f}%
                             - Улучшение ROAS: +{roas_improvement:.1f}%
                             - **Рекомендация**: Приоритетная стратегия для внедрения
                             """)
-                        elif sales_improvement > 5:
-                            st.info(f"""
+                            elif sales_improvement > 5:
+                                st.info(f"""
                             **{name}**: Увеличивает продажи при сопоставимой эффективности
                             - Рост продаж: +{sales_improvement:.1f}%
                             - Изменение ROAS: {roas_improvement:+.1f}%
                             - **Рекомендация**: Подходит для фазы роста
                             """)
-                        elif roas_improvement > 10:
-                            st.info(f"""
+                            elif roas_improvement > 10:
+                                st.info(f"""
                             **{name}**: Повышает эффективность инвестиций
                             - Изменение продаж: {sales_improvement:+.1f}%
                             - Улучшение ROAS: +{roas_improvement:.1f}%
                             - **Рекомендация**: Подходит для оптимизации
                             """)
-                        else:
-                            st.warning(f"""
+                            else:
+                                st.warning(f"""
                             **{name}**: Незначительные улучшения относительно текущей стратегии
                             - Изменение продаж: {sales_improvement:+.1f}%
                             - Изменение ROAS: {roas_improvement:+.1f}%
