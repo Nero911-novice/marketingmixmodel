@@ -1421,85 +1421,243 @@ class MMM_App:
                 st.info("Загрузите данные для валидации")
 
     def show_model(self):
-        st.header("⚙️ Конфигурация модели")
+    st.header("⚙️ Конфигурация модели")
+    
+    if st.session_state.data is None:
+        st.warning("Сначала загрузите данные")
+        return
+    
+    data = st.session_state.data
+    
+    # Добавляем общее объяснение MMM
+    with st.expander("📚 Математические основы Marketing Mix Model", expanded=False):
+        st.markdown("""
+        ### Теоретическая основа Marketing Mix Modeling
         
-        if st.session_state.data is None:
-            st.warning("Сначала загрузите данные")
-            return
+        **Marketing Mix Model** представляет собой эконометрическую модель, основанную на регрессионном анализе временных рядов. 
+        Математическая формулация базируется на аддитивной декомпозиции продаж:
         
-        data = st.session_state.data
+        **Sales(t) = Base(t) + Σ[Adstock(Media_i) × Saturation(Media_i)] + External_factors(t) + ε(t)**
         
-        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+        **Компоненты модели:**
         
-        with tab1:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("Зависимая переменная")
-                target_options = [col for col in data.columns if any(keyword in col.lower() 
-                                for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
-                target_var = st.selectbox("Выберите целевую метрику:", target_options)
-                
-                st.subheader("Медиа-каналы")
-                media_options = [col for col in data.columns if any(keyword in col.lower() 
-                               for keyword in ['spend', 'cost', 'budget', 'расход'])]
-                selected_media = st.multiselect("Выберите медиа-каналы:", media_options, default=media_options[:5])
-            
-            with col2:
-                st.subheader("Внешние факторы")
-                external_options = [col for col in data.columns if any(keyword in col.lower() 
-                                  for keyword in ['holiday', 'promo', 'season', 'competitor', 'праздник'])]
-                selected_external = st.multiselect("Выберите внешние факторы:", external_options, default=external_options)
-                
-                st.subheader("Контрольные переменные")
-                control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
-                selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
+        1. **Base(t)** — базовая линия продаж, включающая:
+           - Органический рост бренда
+           - Долгосрочные эффекты предыдущих маркетинговых активностей
+           - Влияние неизмеряемых факторов (word-of-mouth, brand equity)
         
-        with tab2:
-            st.subheader("Параметры Adstock (эффект переноса)")
-            
-            adstock_params = {}
-            for media in selected_media:
-                with st.expander(f"Настройки для {media}"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        decay = st.slider(f"Decay rate для {media}", 0.0, 0.9, 0.5, 0.1, key=f"decay_{media}")
-                    with col2:
-                        max_lag = st.slider(f"Max lag для {media}", 1, 12, 6, 1, key=f"lag_{media}")
-                    adstock_params[media] = {'decay': decay, 'max_lag': max_lag}
-            
-            st.subheader("Параметры Saturation (эффект насыщения)")
-            saturation_params = {}
-            for media in selected_media:
-                with st.expander(f"Saturation для {media}"):
-                    alpha = st.slider(f"Alpha для {media}", 0.1, 3.0, 1.0, 0.1, key=f"alpha_{media}")
-                    gamma = st.slider(f"Gamma для {media}", 0.1, 2.0, 0.5, 0.1, key=f"gamma_{media}")
-                    saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
+        2. **Media Effects** — трансформированные медиа-переменные через:
+           - **Adstock**: моделирует эффект переноса рекламного воздействия
+           - **Saturation**: учитывает убывающую предельную отдачу от рекламных инвестиций
         
-        with tab3:
-            st.subheader("Обучение модели")
+        3. **External_factors(t)** — контрольные переменные:
+           - Макроэкономические индикаторы
+           - Конкурентная активность
+           - Сезонные и праздничные эффекты
+        
+        4. **ε(t)** — случайная компонента с предположением нормального распределения
+        
+        **Статистические предположения модели:**
+        - Линейная аддитивность эффектов медиа-каналов
+        - Стационарность остатков модели
+        - Отсутствие автокорреляции в остатках
+        - Гомоскедастичность случайных ошибок
+        """)
+    
+    tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+    
+    with tab1:
+        # Добавляем объяснение переменных модели
+        with st.expander("📖 Типология переменных в MMM", expanded=True):
+            st.markdown("""
+            ### Классификация переменных в Marketing Mix Model
             
-            col1, col2 = st.columns(2)
-            with col1:
-                train_ratio = st.slider("Доля обучающей выборки", 0.6, 0.9, 0.8, 0.05)
-                regularization = st.selectbox("Тип регуляризации", ["Ridge", "Lasso", "ElasticNet"])
+            **1. Зависимая переменная (Target Variable)**
+            - Основная KPI, которую модель должна объяснить и предсказать
+            - Требования: временной ряд с достаточной вариативностью
+            - Примеры: заказы, продажи, выручка, конверсии
+            - Рекомендация: логарифмическое преобразование для стабилизации дисперсии
             
-            with col2:
-                alpha_reg = st.slider("Коэффициент регуляризации", 0.001, 1.0, 0.01, 0.001, 
-                                    help="Меньше = модель более чувствительна к данным, Больше = модель более консервативна")
-                cross_val_folds = st.slider("Число фолдов для кросс-валидации", 3, 10, 5, 1)
-                
-                # Добавляем подсказки
-                st.markdown("""
-                💡 **Подсказки для лучшего качества модели:**
-                - **Коэффициент регуляризации 0.001-0.01** → для активных медиа-каналов
-                - **Коэффициент регуляризации 0.1-1.0** → если модель показывает нереалистичные результаты
-                """)
+            **2. Медиа-каналы (Media Variables)**
+            - Контролируемые маркетинговые активности с известными инвестициями
+            - Характеристики: положительная корреляция с target, наличие лагов
+            - Примеры: затраты на paid search, display, social media, TV, radio
+            - Требования к данным: еженедельная/месячная агрегация, отсутствие пропусков
             
-            st.markdown("---")
-            st.subheader("⚡ Быстрый старт")
-            st.markdown("Для быстрого тестирования используйте настройки по умолчанию и нажмите 'Обучить модель'")
+            **3. Внешние факторы (External Variables)**
+            - Неконтролируемые переменные, влияющие на целевую метрику
+            - Типы: макроэкономические, конкурентные, сезонные
+            - Функция: контроль смещения оценок медиа-эффектов
+            - Примеры: индекс потребительских цен, активность конкурентов, температура
             
+            **4. Контрольные переменные (Control Variables)**
+            - Факторы, не являющиеся медиа, но влияющие на результат
+            - Назначение: снижение необъясненной дисперсии модели
+            - Примеры: цена продукта, ассортиментные изменения, промо-активность
+            """)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Зависимая переменная")
+            target_options = [col for col in data.columns if any(keyword in col.lower() 
+                            for keyword in ['orders', 'sales', 'revenue', 'заказ'])]
+            target_var = st.selectbox("Выберите целевую метрику:", target_options)
+            
+            st.subheader("Медиа-каналы")
+            media_options = [col for col in data.columns if any(keyword in col.lower() 
+                           for keyword in ['spend', 'cost', 'budget', 'расход'])]
+            selected_media = st.multiselect("Выберите медиа-каналы:", media_options, default=media_options[:5])
+        
+        with col2:
+            st.subheader("Внешние факторы")
+            external_options = [col for col in data.columns if any(keyword in col.lower() 
+                              for keyword in ['holiday', 'promo', 'season', 'competitor', 'праздник'])]
+            selected_external = st.multiselect("Выберите внешние факторы:", external_options, default=external_options)
+            
+            st.subheader("Контрольные переменные")
+            control_options = [col for col in data.columns if col not in selected_media + selected_external + [target_var, 'date']]
+            selected_controls = st.multiselect("Выберите контрольные переменные:", control_options)
+    
+    with tab2:
+        # Добавляем объяснение параметров трансформации
+        with st.expander("🔬 Научные основы медиа-трансформаций", expanded=True):
+            st.markdown("""
+            ### Adstock трансформация (Эффект переноса)
+            
+            **Теоретическое обоснование:**
+            Рекламное воздействие не ограничивается моментом экспозиции. Psychological theory of memory decay 
+            и consumer behavior research показывают, что эффекты рекламы затухают постепенно.
+            
+            **Геометрическая Adstock модель:**
+            ```
+            Adstock(t) = Media(t) + λ × Adstock(t-1)
+            где λ ∈ [0,1] — коэффициент затухания
+            ```
+            
+            **Интерпретация параметров:**
+            - **λ = 0**: отсутствие эффекта переноса (мгновенное затухание)
+            - **λ = 0.3**: 30% эффекта переносится на следующий период
+            - **λ = 0.7**: высокая продолжительность воздействия
+            
+            **Рекомендации по каналам:**
+            - TV/Radio: λ = 0.6-0.8 (высокое остаточное воздействие)
+            - Digital: λ = 0.2-0.5 (быстрое затухание)
+            - Print: λ = 0.4-0.7 (средняя продолжительность)
+            
+            ### Saturation трансформация (Эффект насыщения)
+            
+            **Экономическая теория:**
+            Основана на законе убывающей предельной полезности. Каждая дополнительная единица 
+            рекламных инвестиций приносит меньший прирост результата.
+            
+            **Hill Saturation функция:**
+            ```
+            Saturation = Media^α / (Media^α + γ^α)
+            где α — форма кривой, γ — точка полунасыщения
+            ```
+            
+            **Интерпретация параметров:**
+            - **α < 1**: кривая с медленным ростом в начале
+            - **α = 1**: линейная связь до точки насыщения
+            - **α > 1**: S-образная кривая с пороговым эффектом
+            - **γ**: уровень медиа-активности при достижении 50% максимального эффекта
+            
+            **Практические границы:**
+            - Зрелые каналы: α = 0.6-1.2, γ близко к медианным расходам
+            - Новые каналы: α = 1.5-2.5, γ может быть выше медианных расходов
+            """)
+        
+        st.subheader("Параметры Adstock (эффект переноса)")
+        
+        adstock_params = {}
+        for media in selected_media:
+            with st.expander(f"Настройки для {media}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    decay = st.slider(f"Decay rate для {media}", 0.0, 0.9, 0.5, 0.1, key=f"decay_{media}",
+                                    help="Доля эффекта, переносимого на следующий период")
+                with col2:
+                    max_lag = st.slider(f"Max lag для {media}", 1, 12, 6, 1, key=f"lag_{media}",
+                                      help="Максимальная продолжительность эффекта в периодах")
+                adstock_params[media] = {'decay': decay, 'max_lag': max_lag}
+        
+        st.subheader("Параметры Saturation (эффект насыщения)")
+        saturation_params = {}
+        for media in selected_media:
+            with st.expander(f"Saturation для {media}"):
+                alpha = st.slider(f"Alpha для {media}", 0.1, 3.0, 1.0, 0.1, key=f"alpha_{media}",
+                                help="Форма кривой насыщения: <1 = медленный рост, >1 = S-кривая")
+                gamma = st.slider(f"Gamma для {media}", 0.1, 2.0, 0.5, 0.1, key=f"gamma_{media}",
+                                help="Точка полунасыщения относительно средних расходов")
+                saturation_params[media] = {'alpha': alpha, 'gamma': gamma}
+    
+    with tab3:
+        # Добавляем объяснение обучения модели
+        with st.expander("📊 Методология обучения и валидации модели", expanded=True):
+            st.markdown("""
+            ### Стратегии машинного обучения в MMM
+            
+            **1. Регуляризация (Regularization)**
+            
+            **Ridge регрессия (L2):**
+            - Минимизирует: ||y - Xβ||² + α||β||²
+            - Эффект: сжимает коэффициенты к нулю, предотвращает переобучение
+            - Подходит для: ситуаций с мультиколлинеарностью между медиа-каналами
+            
+            **Lasso регрессия (L1):**
+            - Минимизирует: ||y - Xβ||² + α|β|
+            - Эффект: обнуляет незначимые коэффициенты, выполняет отбор признаков
+            - Подходит для: исключения неэффективных медиа-каналов
+            
+            **Elastic Net:**
+            - Комбинирует L1 и L2 регуляризацию
+            - Подходит для: сбалансированного подхода к отбору и стабилизации
+            
+            **2. Временное разделение данных**
+            
+            **Принцип:**
+            Обучающая выборка всегда предшествует тестовой по времени для избежания data leakage.
+            
+            **Рекомендации:**
+            - Минимум 70% данных для обучения
+            - Тестовая выборка должна покрывать различные сезонные периоды
+            - При наличии <52 недель данных: использовать cross-validation
+            
+            **3. Метрики качества модели**
+            
+            **R² (Coefficient of Determination):**
+            - Интерпретация: доля объясненной дисперсии
+            - Хорошие значения: >0.7 для еженедельных данных, >0.8 для месячных
+            
+            **MAPE (Mean Absolute Percentage Error):**
+            - Бизнес-интерпретация: средняя процентная ошибка прогноза
+            - Приемлемые значения: <15% для операционного планирования
+            
+            **4. Диагностика остатков**
+            
+            **Критерии валидности модели:**
+            - Нормальность остатков (Shapiro-Wilk test)
+            - Отсутствие автокорреляции (Durbin-Watson test)
+            - Гомоскедастичность (Breusch-Pagan test)
+            - Отсутствие структурных сдвигов (Chow test)
+            """)
+        
+        st.subheader("Обучение модели")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            train_ratio = st.slider("Доля обучающей выборки", 0.6, 0.9, 0.8, 0.05,
+                                  help="Временное разделение: обучение всегда предшествует тесту")
+            regularization = st.selectbox("Тип регуляризации", ["Ridge", "Lasso", "ElasticNet"],
+                                        help="Ridge: стабилизация, Lasso: отбор признаков, ElasticNet: баланс")
+        
+        with col2:
+            alpha_reg = st.slider("Коэффициент регуляризации", 0.001, 1.0, 0.01, 0.001,
+                                help="Контролирует силу регуляризации: больше = консервативнее")
+            cross_val_folds = st.slider("Число фолдов для кросс-валидации", 3, 10, 5, 1,
+                                      help="Используется для подбора гиперпараметров")
+                          
             if st.button("🚀 Обучить модель", type="primary"):
                 with st.spinner("Обучение модели..."):
                     try:
