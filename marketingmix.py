@@ -2241,15 +2241,24 @@ class MMM_App:
                 )
                 
                 # Показываем текущий расход для сравнения
-                current_total = sum(st.session_state.data[ch].mean() for ch in st.session_state.selected_media)
+                current_total = sum(
+                    st.session_state.data[ch].mean()
+                    for ch in st.session_state.selected_media
+                )
                 st.info(f"💡 Текущие расходы: {current_total:,.0f} руб/месяц")
-                
-                if total_budget != current_total:
-                    change_pct = ((total_budget - current_total) / current_total * 100)
+
+                if current_total == 0:
+                    st.info("ℹ️ Нет данных о прошлых расходах. Изменение бюджета: 0%")
+                elif total_budget != current_total:
+                    change_pct = (
+                        (total_budget - current_total) / current_total * 100
+                    )
                     if change_pct > 0:
                         st.success(f"📈 Увеличение бюджета на {change_pct:.0f}%")
                     else:
-                        st.warning(f"📉 Сокращение бюджета на {abs(change_pct):.0f}%")
+                        st.warning(
+                            f"📉 Сокращение бюджета на {abs(change_pct):.0f}%"
+                        )
                 
             with col2:
                 st.subheader("🚧 Ограничения по каналам")
