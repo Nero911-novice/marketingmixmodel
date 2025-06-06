@@ -1801,6 +1801,16 @@ class MMM_App:
             return
         
         model = st.session_state.model
+
+        # Основные вкладки результатов
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "Качество модели",
+            "Декомпозиция",
+            "ROAS анализ",
+            "Кривые насыщения",
+        ])
+
+        # Блок автоматического подбора параметров
         with tab3:  # Новый таб для Grid Search
             st.subheader("🤖 Автоматический подбор параметров")
 
@@ -1844,7 +1854,6 @@ class MMM_App:
     if st.button("🚀 Запустить автоподбор", type="primary"):
         if not selected_media:
             st.error("Сначала выберите медиа-каналы")
-            return
         
         try:
             with st.spinner("Поиск оптимальных параметров..."):
@@ -1907,7 +1916,6 @@ class MMM_App:
                 for ch in selected_media
             }
             st.success("Параметры применены! Переходите к обучению модели.")
-        tab1, tab2, tab3, tab4 = st.tabs(["Качество модели", "Декомпозиция", "ROAS анализ", "Кривые насыщения"])
         
         with tab1:
             # Объяснение метрик качества
@@ -2173,135 +2181,8 @@ class MMM_App:
                 
         with tab4:
             st.subheader("Кривые насыщения")
-            
-            # Объяснение кривых насыщения
-            with st.expander("❓ Что такое кривые насыщения?", expanded=False):
-                st.markdown("""
-                **Кривые насыщения** показывают, как эффективность рекламного канала меняется при увеличении бюджета.
+            st.write("Здесь будет визуализация кривых насыщения и обучение модели.")
 
-                🎯 **Простыми словами:**
-                - Представьте, что вы поливаете растение водой
-                - Сначала каждая капля воды очень помогает росту
-                - Но если лить слишком много - эффект уменьшается
-                - То же самое с рекламой!
-
-                📈 **Что показывает кривая:**
-                - **Начало кривой** = каждый рубль рекламы приносит много заказов
-                - **Середина** = эффективность стабильная
-                - **Конец кривой** = дополнительные рубли приносят мало заказов (насыщение)
-
-                💡 **Практическое применение:**
-                - **Крутой рост** в начале = канал недофинансирован, можно увеличить бюджет
-                - **Пологая кривая** = канал близок к насыщению, дополнительные деньги неэффективны
-                - **Вертикальная линия** = ваш текущий уровень расходов
-
-                🎯 **Идеальная стратегия:** Тратить до точки, где кривая начинает выравниваться
-                """)
-            with tab4:  # Теперь это будет 4-й таб
-    st.subheader("Обучение модели")
-    
-    # Проверка на оптимизированные параметры
-    use_optimized = False
-    if (hasattr(st.session_state, 'optimized_adstock_params') and 
-        hasattr(st.session_state, 'optimized_saturation_params')):
-        
-        use_optimized = st.checkbox(
-            "✅ Использовать найденные оптимальные параметры",
-            value=True,
-            help="Применить параметры из Grid Search"
-        )
-            # Выбор канала для анализа
-            selected_channel = st.selectbox("Выберите канал для анализа:", st.session_state.selected_media)
-            
-            # Построение простой кривой насыщения
-            current_spend = st.session_state.data[selected_channel].mean()
-            max_spend = current_spend * 3  # Показываем до 3x текущих расходов
-            spend_range = np.linspace(0, max_spend, 100)
-            
-            # Простая Hill saturation для демонстрации
-            alpha = 1.0
-            gamma = current_spend * 0.7  # Точка полунасыщения на 70% от текущих расходов
-            saturation_curve = np.power(spend_range, alpha) / (np.power(spend_range, alpha) + np.power(gamma, alpha))
-            
-            fig = go.Figure()
-            
-            # Кривая насыщения
-            fig.add_trace(go.Scatter(
-                x=spend_range,
-                y=saturation_curve,
-                mode='lines',
-                name='Кривая насыщения',
-                line=dict(color='blue', width=3)
-            ))
-            
-            # Текущий уровень расходов
-            current_saturation = np.power(current_spend, alpha) / (np.power(current_spend, alpha) + np.power(gamma, alpha))
-            fig.add_trace(go.Scatter(
-                x=[current_spend],
-                y=[current_saturation],
-                mode='markers',
-                name='Текущие расходы',
-                marker=dict(color='red', size=12, symbol='diamond'),
-                hovertemplate=f"Текущие расходы: {current_spend:,.0f}<br>Эффективность: {current_saturation:.2f}"
-            ))
-            
-            # Зона эффективности
-            efficient_spend = gamma * 1.2  # 120% от точки полунасыщения
-            fig.add_vrect(
-                x0=0, x1=efficient_spend,
-                fillcolor="green", opacity=0.1,
-                annotation_text="Эффективная зона", annotation_position="top left"
-            )
-            
-            fig.add_vrect(
-                x0=efficient_spend, x1=max_spend,
-                fillcolor="orange", opacity=0.1,
-                annotation_text="Зона насыщения", annotation_position="top right"
-            )
-            
-            fig.update_layout(
-                title=f"Кривая насыщения для {selected_channel.replace('_spend', '').title()}",
-                xaxis_title="Расходы на рекламу (руб/месяц)",
-                yaxis_title="Эффективность (нормализованная)",
-                height=500,
-                template="plotly_white"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Интерпретация результатов
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("📊 Анализ текущего уровня")
-                if current_spend < gamma:
-                    st.success("🟢 **Недофинансирован**: Можно увеличить бюджет для лучших результатов")
-                    recommendation = f"Рекомендуется увеличить бюджет до {gamma*1.2:,.0f} руб/месяц"
-                elif current_spend < efficient_spend:
-                    st.info("🟡 **Оптимальный уровень**: Хорошее соотношение затрат и результата")
-                    recommendation = "Текущий уровень расходов близок к оптимальному"
-                else:
-                    st.warning("🟠 **Близко к насыщению**: Дополнительные расходы малоэффективны")
-                    recommendation = f"Рассмотрите перераспределение части бюджета на другие каналы"
-                
-                st.info(f"💡 **Рекомендация**: {recommendation}")
-            
-            with col2:
-                st.subheader("🎯 Ключевые точки")
-                st.metric("Текущие расходы", f"{current_spend:,.0f} руб")
-                st.metric("Точка полунасыщения", f"{gamma:,.0f} руб", 
-                         help="Уровень расходов, при котором достигается 50% максимального эффекта")
-                st.metric("Граница эффективности", f"{efficient_spend:,.0f} руб",
-                         help="После этого уровня каждый дополнительный рубль приносит мало результата")
-                
-                # Потенциал роста
-                potential_increase = (efficient_spend - current_spend) / current_spend * 100 if current_spend > 0 else 0
-                if potential_increase > 20:
-                    st.success(f"📈 Потенциал роста: +{potential_increase:.0f}%")
-                elif potential_increase > 0:
-                    st.info(f"📈 Потенциал роста: +{potential_increase:.0f}%")
-                else:
-                    st.warning("📊 Канал близок к насыщению")
 
     def show_optimization(self):
         st.header("💰 Оптимизация бюджета")
