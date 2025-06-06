@@ -27,7 +27,7 @@ cd marketing-mix-model
 pip install -r requirements.txt
 
 # Запуск приложения
-streamlit run app.py
+streamlit run marketingmix.py
 ```
 
 **Откройте браузер:** `http://localhost:8501`
@@ -45,6 +45,7 @@ streamlit run app.py
 
 ```
 marketing-mix-model/
+├── marketingmix.py        # Запуск приложения Streamlit
 ├── 📊 MarketingMixModel    # Эконометрическая модель
 ├── 🔄 DataProcessor       # ETL и валидация данных
 ├── 📈 Visualizer          # Интерактивная визуализация
