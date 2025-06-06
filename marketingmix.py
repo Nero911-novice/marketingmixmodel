@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, mean_absolute_percentage_error
 from scipy.optimize import minimize, differential_evolution, LinearConstraint, Bounds
 from datetime import datetime, timedelta
-from MMM_GridSearchOptimizer import MMM_GridSearchOptimizer
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -207,50 +206,7 @@ class MarketingMixModel:
         }
         
         return metrics
-
-    def auto_optimize_parameters(
-        self,
-        X,
-        y,
-        media_channels,
-        decay_steps=4,
-        alpha_steps=4,
-        gamma_steps=3,
-        cv_folds=3,
-        scoring="r2",
-        max_combinations=500,
-    ):
-        """Автоматический подбор параметров через Grid Search."""
-
-        optimizer = MMM_GridSearchOptimizer(
-            cv_folds=cv_folds, scoring=scoring, verbose=True
-        )
-
-        best_params, best_score = optimizer.grid_search(
-            model_class=self.__class__,
-            X=X,
-            y=y,
-            media_channels=media_channels,
-            decay_steps=decay_steps,
-            alpha_steps=alpha_steps,
-            gamma_steps=gamma_steps,
-            max_combinations=max_combinations,
-        )
-
-        if best_params:
-            self.adstock_params = {
-                ch: {"decay": best_params[ch]["decay"]} for ch in media_channels
-            }
-            self.saturation_params = {
-                ch: {
-                    "alpha": best_params[ch]["alpha"],
-                    "gamma": best_params[ch]["gamma"],
-                }
-                for ch in media_channels
-            }
-
-        return best_params, best_score, optimizer
-
+    
     def get_model_quality_assessment(self, X_test, y_test):
         """Получить качественную оценку модели для бизнеса."""
         metrics = self.get_model_metrics(X_test, y_test)
@@ -1508,13 +1464,7 @@ class MMM_App:
         - Гомоскедастичность случайных ошибок
         """)
     
-
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "Переменные модели",
-            "Параметры трансформации",
-            "🤖 Автоматический подбор",
-            "Обучение модели",
-        ])
+        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
 
         with tab1:
             # Добавляем объяснение переменных модели
@@ -1801,121 +1751,8 @@ class MMM_App:
             return
         
         model = st.session_state.model
-
-        # Основные вкладки результатов
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "Качество модели",
-            "Декомпозиция",
-            "ROAS анализ",
-            "Кривые насыщения",
-        ])
-
-        # Блок автоматического подбора параметров
-        with tab3:  # Новый таб для Grid Search
-            st.subheader("🤖 Автоматический подбор параметров")
-
-            # Объяснение
-            with st.expander("❓ Что такое автоматический подбор?", expanded=False):
-                st.markdown("""
-        Grid Search автоматически находит лучшие параметры для:
-        - **Adstock decay** - скорость затухания эффекта
-        - **Saturation alpha** - форма кривой насыщения
-        - **Saturation gamma** - точка полунасыщения
-        """)
-
-            # Настройки
-            col1, col2 = st.columns(2)
-
-            with col1:
-                search_mode = st.selectbox(
-                    "Режим поиска",
-                    ["Быстрый", "Средний", "Полный"],
-                    help="Быстрый = 2-5 мин, Средний = 5-15 мин, Полный = 15-60 мин"
-                )
         
-        if search_mode == "Быстрый":
-            decay_steps, alpha_steps = 2, 2
-            max_combinations = 50
-        elif search_mode == "Средний":
-            decay_steps, alpha_steps = 3, 3
-            max_combinations = 200
-        else:  # Полный
-            decay_steps, alpha_steps = 4, 4
-            max_combinations = 500
-    
-    with col2:
-        scoring_metric = st.selectbox(
-            "Метрика оптимизации",
-            ["r2", "mape"],
-            format_func=lambda x: "R² (качество)" if x == "r2" else "MAPE (точность)"
-        )
-    
-    # Кнопка запуска
-    if st.button("🚀 Запустить автоподбор", type="primary"):
-        if not selected_media:
-            st.error("Сначала выберите медиа-каналы")
-        
-        try:
-            with st.spinner("Поиск оптимальных параметров..."):
-                # Подготовка данных
-                X, y = self.processor.prepare_model_data(
-                    data, target_var, selected_media, selected_external, selected_controls
-                )
-                
-                # Создание модели и запуск Grid Search
-                temp_model = MarketingMixModel()
-                best_params, best_score, optimizer = temp_model.auto_optimize_parameters(
-                    X=X, y=y, media_channels=selected_media,
-                    decay_steps=decay_steps, alpha_steps=alpha_steps,
-                    scoring=scoring_metric, max_combinations=max_combinations
-                )
-                
-                # Сохранение результатов
-                st.session_state.grid_search_results = {
-                    'best_params': best_params,
-                    'best_score': best_score,
-                    'optimizer': optimizer
-                }
-                
-                st.success(f"✅ Поиск завершен! Лучший {scoring_metric}: {best_score:.4f}")
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"Ошибка: {str(e)}")
-    
-    # Показ результатов (если есть)
-    if hasattr(st.session_state, 'grid_search_results') and st.session_state.grid_search_results:
-        results = st.session_state.grid_search_results
-        
-        st.subheader("📊 Найденные параметры")
-        
-        # Таблица параметров
-        params_data = []
-        for channel, params in results['best_params'].items():
-            params_data.append({
-                'Канал': channel.replace('_spend', '').title(),
-                'Decay': f"{params['decay']:.3f}",
-                'Alpha': f"{params['alpha']:.3f}",
-                'Gamma': f"{params['gamma']:.0f}"
-            })
-        
-        params_df = pd.DataFrame(params_data)
-        st.dataframe(params_df, use_container_width=True)
-        
-        # Кнопка применения
-        if st.button("✅ Применить параметры", type="secondary"):
-            st.session_state.optimized_adstock_params = {
-                ch: {'decay': results['best_params'][ch]['decay']} 
-                for ch in selected_media
-            }
-            st.session_state.optimized_saturation_params = {
-                ch: {
-                    'alpha': results['best_params'][ch]['alpha'],
-                    'gamma': results['best_params'][ch]['gamma']
-                } 
-                for ch in selected_media
-            }
-            st.success("Параметры применены! Переходите к обучению модели.")
+        tab1, tab2, tab3, tab4 = st.tabs(["Качество модели", "Декомпозиция", "ROAS анализ", "Кривые насыщения"])
         
         with tab1:
             # Объяснение метрик качества
@@ -2181,8 +2018,123 @@ class MMM_App:
                 
         with tab4:
             st.subheader("Кривые насыщения")
-            st.write("Здесь будет визуализация кривых насыщения и обучение модели.")
+            
+            # Объяснение кривых насыщения
+            with st.expander("❓ Что такое кривые насыщения?", expanded=False):
+                st.markdown("""
+                **Кривые насыщения** показывают, как эффективность рекламного канала меняется при увеличении бюджета.
 
+                🎯 **Простыми словами:**
+                - Представьте, что вы поливаете растение водой
+                - Сначала каждая капля воды очень помогает росту
+                - Но если лить слишком много - эффект уменьшается
+                - То же самое с рекламой!
+
+                📈 **Что показывает кривая:**
+                - **Начало кривой** = каждый рубль рекламы приносит много заказов
+                - **Середина** = эффективность стабильная
+                - **Конец кривой** = дополнительные рубли приносят мало заказов (насыщение)
+
+                💡 **Практическое применение:**
+                - **Крутой рост** в начале = канал недофинансирован, можно увеличить бюджет
+                - **Пологая кривая** = канал близок к насыщению, дополнительные деньги неэффективны
+                - **Вертикальная линия** = ваш текущий уровень расходов
+
+                🎯 **Идеальная стратегия:** Тратить до точки, где кривая начинает выравниваться
+                """)
+            
+            # Выбор канала для анализа
+            selected_channel = st.selectbox("Выберите канал для анализа:", st.session_state.selected_media)
+            
+            # Построение простой кривой насыщения
+            current_spend = st.session_state.data[selected_channel].mean()
+            max_spend = current_spend * 3  # Показываем до 3x текущих расходов
+            spend_range = np.linspace(0, max_spend, 100)
+            
+            # Простая Hill saturation для демонстрации
+            alpha = 1.0
+            gamma = current_spend * 0.7  # Точка полунасыщения на 70% от текущих расходов
+            saturation_curve = np.power(spend_range, alpha) / (np.power(spend_range, alpha) + np.power(gamma, alpha))
+            
+            fig = go.Figure()
+            
+            # Кривая насыщения
+            fig.add_trace(go.Scatter(
+                x=spend_range,
+                y=saturation_curve,
+                mode='lines',
+                name='Кривая насыщения',
+                line=dict(color='blue', width=3)
+            ))
+            
+            # Текущий уровень расходов
+            current_saturation = np.power(current_spend, alpha) / (np.power(current_spend, alpha) + np.power(gamma, alpha))
+            fig.add_trace(go.Scatter(
+                x=[current_spend],
+                y=[current_saturation],
+                mode='markers',
+                name='Текущие расходы',
+                marker=dict(color='red', size=12, symbol='diamond'),
+                hovertemplate=f"Текущие расходы: {current_spend:,.0f}<br>Эффективность: {current_saturation:.2f}"
+            ))
+            
+            # Зона эффективности
+            efficient_spend = gamma * 1.2  # 120% от точки полунасыщения
+            fig.add_vrect(
+                x0=0, x1=efficient_spend,
+                fillcolor="green", opacity=0.1,
+                annotation_text="Эффективная зона", annotation_position="top left"
+            )
+            
+            fig.add_vrect(
+                x0=efficient_spend, x1=max_spend,
+                fillcolor="orange", opacity=0.1,
+                annotation_text="Зона насыщения", annotation_position="top right"
+            )
+            
+            fig.update_layout(
+                title=f"Кривая насыщения для {selected_channel.replace('_spend', '').title()}",
+                xaxis_title="Расходы на рекламу (руб/месяц)",
+                yaxis_title="Эффективность (нормализованная)",
+                height=500,
+                template="plotly_white"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Интерпретация результатов
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("📊 Анализ текущего уровня")
+                if current_spend < gamma:
+                    st.success("🟢 **Недофинансирован**: Можно увеличить бюджет для лучших результатов")
+                    recommendation = f"Рекомендуется увеличить бюджет до {gamma*1.2:,.0f} руб/месяц"
+                elif current_spend < efficient_spend:
+                    st.info("🟡 **Оптимальный уровень**: Хорошее соотношение затрат и результата")
+                    recommendation = "Текущий уровень расходов близок к оптимальному"
+                else:
+                    st.warning("🟠 **Близко к насыщению**: Дополнительные расходы малоэффективны")
+                    recommendation = f"Рассмотрите перераспределение части бюджета на другие каналы"
+                
+                st.info(f"💡 **Рекомендация**: {recommendation}")
+            
+            with col2:
+                st.subheader("🎯 Ключевые точки")
+                st.metric("Текущие расходы", f"{current_spend:,.0f} руб")
+                st.metric("Точка полунасыщения", f"{gamma:,.0f} руб", 
+                         help="Уровень расходов, при котором достигается 50% максимального эффекта")
+                st.metric("Граница эффективности", f"{efficient_spend:,.0f} руб",
+                         help="После этого уровня каждый дополнительный рубль приносит мало результата")
+                
+                # Потенциал роста
+                potential_increase = (efficient_spend - current_spend) / current_spend * 100 if current_spend > 0 else 0
+                if potential_increase > 20:
+                    st.success(f"📈 Потенциал роста: +{potential_increase:.0f}%")
+                elif potential_increase > 0:
+                    st.info(f"📈 Потенциал роста: +{potential_increase:.0f}%")
+                else:
+                    st.warning("📊 Канал близок к насыщению")
 
     def show_optimization(self):
         st.header("💰 Оптимизация бюджета")
