@@ -206,7 +206,35 @@ class MarketingMixModel:
         }
         
         return metrics
+    def add_grid_search_method():
+    def auto_optimize_parameters(self, X, y, media_channels, 
+                                decay_steps=4, alpha_steps=4, gamma_steps=3,
+                                cv_folds=3, scoring='r2', max_combinations=500):
+        
+        optimizer = MMM_GridSearchOptimizer(
+            cv_folds=cv_folds, scoring=scoring, verbose=True
+        )
+        
+        best_params, best_score = optimizer.grid_search(
+            model_class=self.__class__, X=X, y=y, media_channels=media_channels,
+            decay_steps=decay_steps, alpha_steps=alpha_steps, gamma_steps=gamma_steps,
+            max_combinations=max_combinations
+        )
+        
+        if best_params:
+            self.adstock_params = {ch: {'decay': best_params[ch]['decay']} 
+                                 for ch in media_channels}
+            self.saturation_params = {ch: {'alpha': best_params[ch]['alpha'], 
+                                         'gamma': best_params[ch]['gamma']} 
+                                    for ch in media_channels}
+        
+        return best_params, best_score, optimizer
     
+    return auto_optimize_parameters
+
+# Применяем метод к классу
+MarketingMixModel.auto_optimize_parameters = add_grid_search_method()
+
     def get_model_quality_assessment(self, X_test, y_test):
         """Получить качественную оценку модели для бизнеса."""
         metrics = self.get_model_metrics(X_test, y_test)
@@ -1464,7 +1492,12 @@ class MMM_App:
         - Гомоскедастичность случайных ошибок
         """)
     
-        tab1, tab2, tab3 = st.tabs(["Переменные модели", "Параметры трансформации", "Обучение модели"])
+      tab1, tab2, tab3, tab4 = st.tabs([
+        "Переменные модели", 
+        "Параметры трансформации", 
+        "🤖 Автоматический подбор",
+        "Обучение модели"
+     ])
 
         with tab1:
             # Добавляем объяснение переменных модели
@@ -1751,7 +1784,112 @@ class MMM_App:
             return
         
         model = st.session_state.model
+        with tab3:  # Новый таб для Grid Search
+    st.subheader("🤖 Автоматический подбор параметров")
+    
+    # Объяснение
+    with st.expander("❓ Что такое автоматический подбор?", expanded=False):
+        st.markdown("""
+        Grid Search автоматически находит лучшие параметры для:
+        - **Adstock decay** - скорость затухания эффекта
+        - **Saturation alpha** - форма кривой насыщения
+        - **Saturation gamma** - точка полунасыщения
+        """)
+    
+    # Настройки
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        search_mode = st.selectbox(
+            "Режим поиска",
+            ["Быстрый", "Средний", "Полный"],
+            help="Быстрый = 2-5 мин, Средний = 5-15 мин, Полный = 15-60 мин"
+        )
         
+        if search_mode == "Быстрый":
+            decay_steps, alpha_steps = 2, 2
+            max_combinations = 50
+        elif search_mode == "Средний":
+            decay_steps, alpha_steps = 3, 3
+            max_combinations = 200
+        else:  # Полный
+            decay_steps, alpha_steps = 4, 4
+            max_combinations = 500
+    
+    with col2:
+        scoring_metric = st.selectbox(
+            "Метрика оптимизации",
+            ["r2", "mape"],
+            format_func=lambda x: "R² (качество)" if x == "r2" else "MAPE (точность)"
+        )
+    
+    # Кнопка запуска
+    if st.button("🚀 Запустить автоподбор", type="primary"):
+        if not selected_media:
+            st.error("Сначала выберите медиа-каналы")
+            return
+        
+        try:
+            with st.spinner("Поиск оптимальных параметров..."):
+                # Подготовка данных
+                X, y = self.processor.prepare_model_data(
+                    data, target_var, selected_media, selected_external, selected_controls
+                )
+                
+                # Создание модели и запуск Grid Search
+                temp_model = MarketingMixModel()
+                best_params, best_score, optimizer = temp_model.auto_optimize_parameters(
+                    X=X, y=y, media_channels=selected_media,
+                    decay_steps=decay_steps, alpha_steps=alpha_steps,
+                    scoring=scoring_metric, max_combinations=max_combinations
+                )
+                
+                # Сохранение результатов
+                st.session_state.grid_search_results = {
+                    'best_params': best_params,
+                    'best_score': best_score,
+                    'optimizer': optimizer
+                }
+                
+                st.success(f"✅ Поиск завершен! Лучший {scoring_metric}: {best_score:.4f}")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Ошибка: {str(e)}")
+    
+    # Показ результатов (если есть)
+    if hasattr(st.session_state, 'grid_search_results') and st.session_state.grid_search_results:
+        results = st.session_state.grid_search_results
+        
+        st.subheader("📊 Найденные параметры")
+        
+        # Таблица параметров
+        params_data = []
+        for channel, params in results['best_params'].items():
+            params_data.append({
+                'Канал': channel.replace('_spend', '').title(),
+                'Decay': f"{params['decay']:.3f}",
+                'Alpha': f"{params['alpha']:.3f}",
+                'Gamma': f"{params['gamma']:.0f}"
+            })
+        
+        params_df = pd.DataFrame(params_data)
+        st.dataframe(params_df, use_container_width=True)
+        
+        # Кнопка применения
+        if st.button("✅ Применить параметры", type="secondary"):
+            st.session_state.optimized_adstock_params = {
+                ch: {'decay': results['best_params'][ch]['decay']} 
+                for ch in selected_media
+            }
+            st.session_state.optimized_saturation_params = {
+                ch: {
+                    'alpha': results['best_params'][ch]['alpha'],
+                    'gamma': results['best_params'][ch]['gamma']
+                } 
+                for ch in selected_media
+            }
+            st.success("Параметры применены! Переходите к обучению модели.")
         tab1, tab2, tab3, tab4 = st.tabs(["Качество модели", "Декомпозиция", "ROAS анализ", "Кривые насыщения"])
         
         with tab1:
@@ -2042,7 +2180,19 @@ class MMM_App:
 
                 🎯 **Идеальная стратегия:** Тратить до точки, где кривая начинает выравниваться
                 """)
-            
+            with tab4:  # Теперь это будет 4-й таб
+    st.subheader("Обучение модели")
+    
+    # Проверка на оптимизированные параметры
+    use_optimized = False
+    if (hasattr(st.session_state, 'optimized_adstock_params') and 
+        hasattr(st.session_state, 'optimized_saturation_params')):
+        
+        use_optimized = st.checkbox(
+            "✅ Использовать найденные оптимальные параметры",
+            value=True,
+            help="Применить параметры из Grid Search"
+        )
             # Выбор канала для анализа
             selected_channel = st.selectbox("Выберите канал для анализа:", st.session_state.selected_media)
             
