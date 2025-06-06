@@ -235,41 +235,6 @@ class MMM_GridSearchOptimizer:
         
         return fig
 
-# ==========================================
-# МОДИФИКАЦИЯ КЛАССА MarketingMixModel
-# ==========================================
-
-def add_grid_search_method():
-    """Добавление метода Grid Search в класс MarketingMixModel."""
-    
-    def auto_optimize_parameters(self, X, y, media_channels, 
-                                decay_steps=4, alpha_steps=4, gamma_steps=3,
-                                cv_folds=3, scoring='r2', max_combinations=500):
-        """Автоматическая оптимизация параметров."""
-        
-        optimizer = MMM_GridSearchOptimizer(
-            cv_folds=cv_folds, scoring=scoring, verbose=True
-        )
-        
-        best_params, best_score = optimizer.grid_search(
-            model_class=self.__class__, X=X, y=y, media_channels=media_channels,
-            decay_steps=decay_steps, alpha_steps=alpha_steps, gamma_steps=gamma_steps,
-            max_combinations=max_combinations
-        )
-        
-        if best_params:
-            self.adstock_params = {ch: {'decay': best_params[ch]['decay']} 
-                                 for ch in media_channels}
-            self.saturation_params = {ch: {'alpha': best_params[ch]['alpha'], 
-                                         'gamma': best_params[ch]['gamma']} 
-                                    for ch in media_channels}
-        
-        return best_params, best_score, optimizer
-    
-    return auto_optimize_parameters
-
-# Добавляем метод к классу
-MarketingMixModel.auto_optimize_parameters = add_grid_search_method()
 
 # ==========================================
 # ОБНОВЛЕНИЕ STREAMLIT APP

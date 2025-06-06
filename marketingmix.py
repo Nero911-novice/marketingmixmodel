@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score, mean_absolute_percentage_error
 from scipy.optimize import minimize, differential_evolution, LinearConstraint, Bounds
 from datetime import datetime, timedelta
+from MMM_GridSearchOptimizer import MMM_GridSearchOptimizer
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -206,34 +207,49 @@ class MarketingMixModel:
         }
         
         return metrics
-    def add_grid_search_method():
-    def auto_optimize_parameters(self, X, y, media_channels, 
-                                decay_steps=4, alpha_steps=4, gamma_steps=3,
-                                cv_folds=3, scoring='r2', max_combinations=500):
-        
+
+    def auto_optimize_parameters(
+        self,
+        X,
+        y,
+        media_channels,
+        decay_steps=4,
+        alpha_steps=4,
+        gamma_steps=3,
+        cv_folds=3,
+        scoring="r2",
+        max_combinations=500,
+    ):
+        """Автоматический подбор параметров через Grid Search."""
+
         optimizer = MMM_GridSearchOptimizer(
             cv_folds=cv_folds, scoring=scoring, verbose=True
         )
-        
-        best_params, best_score = optimizer.grid_search(
-            model_class=self.__class__, X=X, y=y, media_channels=media_channels,
-            decay_steps=decay_steps, alpha_steps=alpha_steps, gamma_steps=gamma_steps,
-            max_combinations=max_combinations
-        )
-        
-        if best_params:
-            self.adstock_params = {ch: {'decay': best_params[ch]['decay']} 
-                                 for ch in media_channels}
-            self.saturation_params = {ch: {'alpha': best_params[ch]['alpha'], 
-                                         'gamma': best_params[ch]['gamma']} 
-                                    for ch in media_channels}
-        
-        return best_params, best_score, optimizer
-    
-    return auto_optimize_parameters
 
-# Применяем метод к классу
-MarketingMixModel.auto_optimize_parameters = add_grid_search_method()
+        best_params, best_score = optimizer.grid_search(
+            model_class=self.__class__,
+            X=X,
+            y=y,
+            media_channels=media_channels,
+            decay_steps=decay_steps,
+            alpha_steps=alpha_steps,
+            gamma_steps=gamma_steps,
+            max_combinations=max_combinations,
+        )
+
+        if best_params:
+            self.adstock_params = {
+                ch: {"decay": best_params[ch]["decay"]} for ch in media_channels
+            }
+            self.saturation_params = {
+                ch: {
+                    "alpha": best_params[ch]["alpha"],
+                    "gamma": best_params[ch]["gamma"],
+                }
+                for ch in media_channels
+            }
+
+        return best_params, best_score, optimizer
 
     def get_model_quality_assessment(self, X_test, y_test):
         """Получить качественную оценку модели для бизнеса."""
@@ -1492,12 +1508,13 @@ class MMM_App:
         - Гомоскедастичность случайных ошибок
         """)
     
-      tab1, tab2, tab3, tab4 = st.tabs([
-        "Переменные модели", 
-        "Параметры трансформации", 
-        "🤖 Автоматический подбор",
-        "Обучение модели"
-     ])
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "Переменные модели",
+            "Параметры трансформации",
+            "🤖 Автоматический подбор",
+            "Обучение модели",
+        ])
 
         with tab1:
             # Добавляем объяснение переменных модели
@@ -1785,26 +1802,26 @@ class MMM_App:
         
         model = st.session_state.model
         with tab3:  # Новый таб для Grid Search
-    st.subheader("🤖 Автоматический подбор параметров")
-    
-    # Объяснение
-    with st.expander("❓ Что такое автоматический подбор?", expanded=False):
-        st.markdown("""
+            st.subheader("🤖 Автоматический подбор параметров")
+
+            # Объяснение
+            with st.expander("❓ Что такое автоматический подбор?", expanded=False):
+                st.markdown("""
         Grid Search автоматически находит лучшие параметры для:
         - **Adstock decay** - скорость затухания эффекта
         - **Saturation alpha** - форма кривой насыщения
         - **Saturation gamma** - точка полунасыщения
         """)
-    
-    # Настройки
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        search_mode = st.selectbox(
-            "Режим поиска",
-            ["Быстрый", "Средний", "Полный"],
-            help="Быстрый = 2-5 мин, Средний = 5-15 мин, Полный = 15-60 мин"
-        )
+
+            # Настройки
+            col1, col2 = st.columns(2)
+
+            with col1:
+                search_mode = st.selectbox(
+                    "Режим поиска",
+                    ["Быстрый", "Средний", "Полный"],
+                    help="Быстрый = 2-5 мин, Средний = 5-15 мин, Полный = 15-60 мин"
+                )
         
         if search_mode == "Быстрый":
             decay_steps, alpha_steps = 2, 2
